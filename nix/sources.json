@@ -1,0 +1,39 @@
+{
+    "k": {
+        "branch": "master",
+        "description": "K Framework Tools 5.0",
+        "homepage": "",
+        "owner": "runtimeverification",
+        "repo": "k",
+        "rev": "b8e636e53e617e22fb28bd9c85e4c58360255583",
+        "sha256": "10xj3mdim247l2w1p5xib8p5293cq56k9xfcgh52h5dsg65895a7",
+        "type": "tarball",
+        "url": "https://github.com/runtimeverification/k/archive/b8e636e53e617e22fb28bd9c85e4c58360255583.tar.gz",
+        "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
+    },
+    "niv": {
+        "branch": "master",
+        "description": "Easy dependency management for Nix projects",
+        "homepage": "https://github.com/nmattia/niv",
+        "owner": "nmattia",
+        "repo": "niv",
+        "rev": "945aa20cd077a8eccb1c42e29f225370b9a8d78b",
+        "sha256": "0qx94wvmaplagiwmrh558iwwr7nhvini40qmlx21myc66z51if32",
+        "type": "tarball",
+        "url": "https://github.com/nmattia/niv/archive/945aa20cd077a8eccb1c42e29f225370b9a8d78b.tar.gz",
+        "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
+    },
+    "nixpkgs": {
+        "branch": "release-21.11",
+        "description": "Nix Packages collection",
+        "homepage": "",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "dff5496b12817e3d019983827c4b7ba7beb96580",
+        "sha256": "14hmk545rhlr03lmagkbh42m63wqdmqbw502fnrqgcxmns657nds",
+        "type": "tarball",
+        "url": "https://github.com/NixOS/nixpkgs/archive/dff5496b12817e3d019983827c4b7ba7beb96580.tar.gz",
+        "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz",
+        "version": "21.11"
+    }
+}
