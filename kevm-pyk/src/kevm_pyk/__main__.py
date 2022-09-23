@@ -345,6 +345,7 @@ def exec_prove(
     claims: Iterable[str] = (),
     exclude_claims: Iterable[str] = (),
     minimize: bool = True,
+    smt: bool = True,
     **kwargs: Any,
 ) -> None:
     _ignore_arg(kwargs, 'lemmas', '--lemma')
@@ -361,6 +362,8 @@ def exec_prove(
         prove_args += ['--claims', ','.join(claims)]
     if exclude_claims:
         prove_args += ['--exclude', ','.join(exclude_claims)]
+    if not smt:
+        prove_args += ['--smt', 'none']
     final_state = kevm.prove(spec_file, spec_module_name=spec_module, args=prove_args, haskell_args=haskell_args)
     if minimize:
         final_state = minimize_term(final_state)
@@ -710,6 +713,7 @@ def _create_argument_parser() -> ArgumentParser:
     kprove_args.add_argument(
         '--no-minimize', dest='minimize', action='store_false', help='Do not minimize prover output.'
     )
+    kprove_args.add_argument('--no-smt', dest='smt', default=False, action='store_true', help='Turn off SMT solver.')
 
     k_kompile_args = ArgumentParser(add_help=False)
     k_kompile_args.add_argument('--backend', type=KompileBackend, help='[llvm|haskell]')

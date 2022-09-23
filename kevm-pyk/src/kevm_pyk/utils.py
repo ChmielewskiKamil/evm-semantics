@@ -67,11 +67,14 @@ def KProve_prove_claim(  # noqa: N802
     logger: Logger,
     depth: Optional[int] = None,
     lemmas: Iterable[KRule] = (),
+    smt: bool = True,
 ) -> Tuple[bool, KInner]:
     logger.info(f'Proving claim: {claim_id}')
     prove_args = []
     if depth is not None:
         prove_args += ['--depth', str(depth)]
+    if not smt:
+        prove_args += ['--smt', 'none']
     result = kprove.prove_claim(claim, claim_id, args=prove_args, lemmas=lemmas)
     failed = False
     if type(result) is KApply and result.label.name == '#Top':
