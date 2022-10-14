@@ -84,7 +84,7 @@
 
             dontUseCmakeConfigure = true;
 
-            patches = [ ./package/nix/kevm.patch ];
+            # patches = [ ./package/nix/kevm.patch ];
 
             postPatch = ''
               substituteInPlace ./cmake/node/CMakeLists.txt \
