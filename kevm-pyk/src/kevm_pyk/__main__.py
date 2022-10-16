@@ -714,6 +714,14 @@ def _create_argument_parser() -> ArgumentParser:
         '--no-minimize', dest='minimize', action='store_false', help='Do not minimize prover output.'
     )
     kprove_args.add_argument('--no-smt', dest='smt', default=False, action='store_true', help='Turn off SMT solver.')
+    kprove_args.add_argument('--claim', dest='claims', default=[], action='append', help='Only verify these claims.')
+    kprove_args.add_argument(
+        '--exclude-claim',
+        type=str,
+        dest='exclude_claims',
+        action='append',
+        help='Skip listed claims, MODULE_NAME.claim-id',
+    )
 
     k_kompile_args = ArgumentParser(add_help=False)
     k_kompile_args.add_argument('--backend', type=KompileBackend, help='[llvm|haskell]')
@@ -791,16 +799,6 @@ def _create_argument_parser() -> ArgumentParser:
 
     prove_args = command_parser.add_parser('prove', help='Run KEVM proof.', parents=[shared_args, k_args, kprove_args])
     prove_args.add_argument('spec_file', type=file_path, help='Path to spec file.')
-    prove_args.add_argument(
-        '--claim', type=str, dest='claims', action='append', help='Only prove listed claims, MODULE_NAME.claim-id'
-    )
-    prove_args.add_argument(
-        '--exclude-claim',
-        type=str,
-        dest='exclude_claims',
-        action='append',
-        help='Skip listed claims, MODULE_NAME.claim-id',
-    )
 
     run_args = command_parser.add_parser(
         'run', help='Run KEVM test/simulation.', parents=[shared_args, evm_chain_args, k_args]
