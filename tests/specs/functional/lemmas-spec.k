@@ -5,8 +5,8 @@ module VERIFICATION
     imports EDSL
     imports LEMMAS
 
-    syntax StepSort ::= Map | ByteArray | Int | Bool
- // ------------------------------------------------
+    syntax StepSort ::= Map | ByteArray | Int | Bool | Set
+ // ------------------------------------------------------
 
     syntax KItem ::= runLemma ( StepSort )
                    | doneLemma( StepSort )
@@ -32,6 +32,13 @@ module LEMMAS-SPEC
  // ---------
 
     claim <k> runLemma(#isPrecompiledAccount(#newAddr(TESTER_ACCT, 1), ISTANBUL)) => doneLemma(false) ... </k> requires #rangeAddress(TESTER_ACCT)
+
+ // Sets
+ // ----
+
+    claim [set-1]: <k> runLemma(SetItem(X) -Set ((SetItem(Y) -Set REST) REST)) => doneLemma(SetItem(X) -Set REST) ... </k> requires X =/=Int Y
+
+    claim [set-2]: <k> runLemma(SetItem(X) -Set (SetItem(Y) REST)) => doneLemma(SetItem(X) -Set REST) ... </k> requires X =/=Int Y
 
  // Arithmetic
  // ----------
