@@ -12,11 +12,12 @@ from pyk.kastManip import minimize_term
 from pyk.kcfg import KCFG
 from pyk.ktool.krun import _krun
 from pyk.prelude.ml import mlTop
+from pyk.utils import shorten_hashes
 
 from .gst_to_kore import gst_to_kore
 from .kevm import KEVM, Foundry
 from .solc_to_k import Contract, contract_to_main_module, method_to_cfg, solc_compile
-from .utils import KPrint_make_unparsing, KProve_prove_claim, add_include_arg
+from .utils import KPrint_make_unparsing, add_include_arg
 
 T = TypeVar('T')
 
@@ -260,8 +261,7 @@ def exec_foundry_prove(
     includes: List[str],
     debug_equations: List[str],
     bug_report: bool,
-    store_depth: int,
-    depth: Optional[int],
+    max_depth: int,
     reinit: bool = False,
     tests: Iterable[str] = (),
     exclude_tests: Iterable[str] = (),
@@ -315,7 +315,7 @@ def exec_foundry_prove(
     if unfound_tests:
         raise ValueError(f'Test identifiers not found: {unfound_tests}')
 
-    kcfgs: Dict[str, KCFG] = {}
+    kcfgs: Dict[str, Tuple[KCFG, Path]] = {}
     for test in tests:
         kcfg_file = kcfgs_dir / f'{test}.json'
         if reinit or not kcfg_file.exists():
@@ -325,29 +325,77 @@ def exec_foundry_prove(
             method = [m for m in contract.methods if m.name == method_name][0]
             empty_config = foundry.definition.empty_config(Foundry.Sorts.FOUNDRY_CELL)
             cfg = method_to_cfg(empty_config, contract, method)
-            kcfgs[test] = cfg
+            kcfgs[test] = (cfg, kcfg_file)
             with open(kcfg_file, 'w') as kf:
                 kf.write(json.dumps(cfg.to_dict()))
                 kf.close()
             _LOGGER.info(f'Wrote file: {kcfg_file}')
         else:
             with open(kcfg_file, 'r') as kf:
-                kcfgs[test] = KCFG.from_dict(json.loads(kf.read()))
+                kcfgs[test] = (KCFG.from_dict(json.loads(kf.read())), kcfg_file)
 
     def _kcfg_unproven_to_claim(_kcfg: KCFG) -> KClaim:
         return _kcfg.create_edge(_kcfg.get_unique_init().id, _kcfg.get_unique_target().id, mlTop(), depth=-1).to_claim()
 
     lemma_rules = [KRule(KToken(lr, 'K'), att=KAtt({'simplification': ''})) for lr in lemmas]
 
-    def prove_it(_id_and_cfg: Tuple[str, KCFG]) -> bool:
-        _cfg_id, _cfg = _id_and_cfg
-        _claim = _kcfg_unproven_to_claim(_cfg)
-        _claim_id = _cfg_id.replace('.', '-').replace('_', '-')
-        ret, result = KProve_prove_claim(foundry, _claim, _claim_id, _LOGGER, depth=depth, lemmas=lemma_rules)
-        if minimize:
-            result = minimize_term(result)
-        print(f'Result for {_cfg_id}:\n{foundry.pretty_print(result)}\n')
-        return ret
+    def prove_it(id_and_cfg: Tuple[str, Tuple[KCFG, Path]]) -> bool:
+        cfgid, (cfg, cfgpath) = id_and_cfg
+        target_node = cfg.get_unique_target()
+        failure_nodes: List[str] = []
+
+        while cfg.frontier:
+            curr_node = cfg.frontier[0]
+            _LOGGER.info(f'Advancing proof from node: {shorten_hashes(curr_node.id)}')
+            edge = KCFG.Edge(curr_node, target_node, mlTop(), -1)
+            claim = edge.to_claim()
+            claim_id = f'gen-{curr_node.id}-to-{target_node.id}'
+            depth, branching, result = foundry.get_claim_basic_block(
+                claim_id, claim, lemmas=lemma_rules, max_depth=max_depth
+            )
+            cfg.add_expanded(curr_node.id)
+
+            if result == mlTop():
+                cfg.create_edge(curr_node.id, target_node.id, mlTop(), depth)
+                _LOGGER.info(
+                    f'Target state reached at depth {depth}, inserted edge from {shorten_hashes((curr_node.id))} to {shorten_hashes((target_node.id))}.'
+                )
+
+            next_state = CTerm(result)
+            next_node = cfg.get_or_create_node(next_state)
+            if next_node != curr_node:
+                _LOGGER.info(f'Found basic block at depth {depth}: {shorten_hashes((curr_node.id, next_node.id))}.')
+                cfg.create_edge(curr_node.id, next_node.id, mlTop(), depth)
+
+            elif KEVM.is_terminal(next_node.cterm):
+                cfg.add_expanded(next_node.id)
+                failure_nodes.append(next_node.id)
+                _LOGGER.info(f'Terminal node: {shorten_hashes((curr_node.id))}.')
+
+            elif branching:
+                branches = KEVM.extract_branches(next_state)
+                if not branches:
+                    raise ValueError(
+                        f'Could not extract branch condition:\n{foundry.pretty_print(minimize_term(result))}'
+                    )
+                cfg.add_expanded(next_node.id)
+                _LOGGER.info(
+                    f'Found {len(list(branches))} branches at depth {depth}: {[foundry.pretty_print(b) for b in branches]}'
+                )
+                for branch in branches:
+                    branch_cterm = next_state.add_constraint(branch)
+                    branch_node = cfg.get_or_create_node(branch_cterm)
+                    cfg.create_cover(branch_node.id, next_node.id)
+
+            with open(cfgpath, 'w') as cfgfile:
+                cfgfile.write(json.dumps(cfg.to_dict()))
+                _LOGGER.info(f'Updated CFG file: {cfgpath}')
+
+        if failure_nodes:
+            _LOGGER.error(f'Failure nodes: {shorten_hashes(failure_nodes)}')
+            return False
+
+        return True
 
     with ProcessPool(ncpus=workers) as process_pool:
         results = process_pool.map(prove_it, kcfgs.items())
@@ -600,9 +648,9 @@ def _create_argument_parser() -> ArgumentParser:
         help='Reinitialize KCFGs even if they already exist.',
     )
     foundry_prove_args.add_argument(
-        '--store-depth',
-        dest='store_depth',
-        default=100,
+        '--max-depth',
+        dest='max_depth',
+        default=250,
         type=int,
         help='Store every Nth state in the KCFG for inspection.',
     )
