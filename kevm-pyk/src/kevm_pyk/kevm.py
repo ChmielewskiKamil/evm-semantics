@@ -78,6 +78,9 @@ class KEVM(KProve, KRun):
         symbol_table['_*Int_']                                        = paren(symbol_table['_*Int_'])
         symbol_table['_-Int_']                                        = paren(symbol_table['_-Int_'])
         symbol_table['_+Int_']                                        = paren(symbol_table['_+Int_'])
+        symbol_table['_&Int_']                                        = paren(symbol_table['_&Int_'])
+        symbol_table['_|Int_']                                        = paren(symbol_table['_|Int_'])
+        symbol_table['_modInt_']                                      = paren(symbol_table['_modInt_'])
         symbol_table['#Or']                                           = paren(symbol_table['#Or'])
         symbol_table['#And']                                          = paren(symbol_table['#And'])
         symbol_table['#Implies']                                      = paren(symbol_table['#Implies'])
@@ -95,6 +98,8 @@ class KEVM(KProve, KRun):
         symbol_table['_>=Word__EVM-TYPES_Int_Int_Int']                = paren(lambda a1, a2: '(' + a1 + ') >=Word (' + a2 + ')')
         symbol_table['_==Word__EVM-TYPES_Int_Int_Int']                = paren(lambda a1, a2: '(' + a1 + ') ==Word (' + a2 + ')')
         symbol_table['_s<Word__EVM-TYPES_Int_Int_Int']                = paren(lambda a1, a2: '(' + a1 + ') s<Word (' + a2 + ')')
+        if 'typedArgs' in symbol_table:
+            symbol_table['typedArgs'] = paren(symbol_table['typedArgs'])
         # fmt: on
 
     class Sorts:
