@@ -11,9 +11,10 @@ from pyk.kastManip import flatten_label, get_cell
 from pyk.ktool import KProve, KRun
 from pyk.ktool.kprint import paren
 from pyk.prelude.kbool import notBool
-from pyk.prelude.kint import intToken
-from pyk.prelude.ml import mlEqualsTrue
+from pyk.prelude.kint import intToken, ltInt
+from pyk.prelude.ml import mlAnd, mlEqualsTrue
 from pyk.prelude.string import stringToken
+from pyk.utils import unique
 
 from .utils import add_include_arg
 
@@ -153,6 +154,26 @@ class KEVM(KProve, KRun):
             'SERIALIZATION.#newAddr',
             'SERIALIZATION.#newAddrCreate2',
         ]
+
+    @staticmethod
+    def add_invariant(cterm: CTerm) -> CTerm:
+        config, *constraints = cterm
+
+        word_stack = get_cell(config, 'WORDSTACK_CELL')
+        if type(word_stack) is not KVariable:
+            word_stack_items = flatten_label('_:__EVM-TYPES_WordStack_Int_WordStack', word_stack)
+            for i in word_stack_items[:-1]:
+                constraints.append(mlEqualsTrue(KEVM.range_uint(256, i)))
+
+        gas_cell = get_cell(config, 'GAS_CELL')
+        if not (type(gas_cell) is KApply and gas_cell.label.name == 'infGas'):
+            constraints.append(mlEqualsTrue(KEVM.range_uint(256, gas_cell)))
+        constraints.append(mlEqualsTrue(KEVM.range_address(get_cell(config, 'ID_CELL'))))
+        constraints.append(mlEqualsTrue(KEVM.range_address(get_cell(config, 'CALLER_CELL'))))
+        constraints.append(mlEqualsTrue(KEVM.range_address(get_cell(config, 'ORIGIN_CELL'))))
+        constraints.append(mlEqualsTrue(ltInt(KEVM.size_bytearray(get_cell(config, 'CALLDATA_CELL')), KEVM.pow256())))
+
+        return CTerm(mlAnd([config] + list(unique(constraints))))
 
     @staticmethod
     def extract_branches(cterm: CTerm) -> Iterable[KInner]:
