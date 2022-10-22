@@ -30,7 +30,7 @@ from pyk.ktool.kompile import KompileBackend
 from pyk.ktool.krun import _krun
 from pyk.prelude.kbool import FALSE
 from pyk.prelude.kint import intToken
-from pyk.prelude.ml import mlAnd, mlTop
+from pyk.prelude.ml import is_top, mlAnd, mlTop
 from pyk.utils import shorten_hashes
 
 from .gst_to_kore import gst_to_kore
@@ -381,6 +381,7 @@ def exec_foundry_prove(
     bug_report: bool,
     max_depth: int,
     max_iterations: Optional[int],
+    boost: bool = False,
     reinit: bool = False,
     tests: Iterable[str] = (),
     exclude_tests: Iterable[str] = (),
@@ -492,6 +493,22 @@ def exec_foundry_prove(
             curr_node = cfg.frontier[0]
             cfg.add_expanded(curr_node.id)
             _LOGGER.info(f'Advancing proof from node {cfgid}: {shorten_hashes(curr_node.id)}')
+
+            if boost:
+                fast_depth, fast_next_cterm = foundry.get_basic_block_fast(curr_node.cterm)
+                if fast_depth > 0:
+                    fast_next_node = cfg.get_or_create_node(fast_next_cterm)
+                    cfg.add_expanded(fast_next_node.id)
+                    edge_constraint = mlAnd(
+                        [c for c in fast_next_cterm.constraints if c not in curr_node.cterm.constraints]
+                    )
+                    if not is_top(edge_constraint):
+                        _LOGGER.info(f'Constraint from boosted rewriter: {foundry.pretty_print(edge_constraint)}')
+                    cfg.create_edge(curr_node.id, fast_next_node.id, edge_constraint, fast_depth)
+                    curr_node = fast_next_node
+                    _LOGGER.info(f'Took {fast_depth} steps with fast rewriter to get node: {curr_node.id}.')
+                    _write_cfg(cfg, cfgpath)
+
             edge = KCFG.Edge(curr_node, target_node, mlTop(), -1)
             claim = edge.to_claim()
             claim_id = f'gen-block-{curr_node.id}-to-{target_node.id}'
@@ -930,6 +947,7 @@ def _create_argument_parser() -> ArgumentParser:
         type=int,
         help='Store every Nth state in the KCFG for inspection.',
     )
+    foundry_prove_args.add_argument('--boost', default=False, action='store_true', help='Boost it 😎.')
 
     foundry_show_args = command_parser.add_parser(
         'foundry-show',
