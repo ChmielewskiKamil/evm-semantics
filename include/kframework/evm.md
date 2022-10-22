@@ -1441,10 +1441,10 @@ The various `CALL*` (and other inter-contract control flow) operations will be d
          <output> OUT </output>
          <gas> GAVAIL </gas>
 
-    syntax InternalOp ::= "#refund" Int
+    syntax InternalOp ::= "#refund" Exp [strict]
                         | "#setLocalMem" Int Int ByteArray
  // ------------------------------------------------------
-    rule <k> #refund G:Int => . ... </k> <gas> GAVAIL => GAVAIL +Int G </gas>
+    rule [refund]: <k> #refund G:Int => . ... </k> <gas> GAVAIL => GAVAIL +Int G </gas>
 
     rule <k> #setLocalMem START WIDTH WS => . ... </k>
          <localMem> LM => LM [ START := WS [ 0 .. minInt(WIDTH, #sizeByteArray(WS)) ] ] </localMem>
@@ -2198,18 +2198,20 @@ The intrinsic gas calculation mirrors the style of the YellowPaper (appendix H).
 There are several helpers for calculating gas (most of them also specified in the YellowPaper).
 
 ```k
-    syntax Int ::= Ccall         ( Schedule , Bool , Int , Int , Int , Bool ) [function, functional]
-                 | Ccallgas      ( Schedule , Bool , Int , Int , Int , Bool ) [function, functional]
-                 | Cselfdestruct ( Schedule , Bool , Int )                    [function, functional]
- // ------------------------------------------------------------------------------------------------
-   rule Ccall(SCHED, ISEMPTY:Bool, GCAP, GAVAIL, VALUE, ISWARM)
-     => Cextra(SCHED, ISEMPTY, VALUE, ISWARM) +Int Cgascap(SCHED, GCAP, GAVAIL, Cextra(SCHED, ISEMPTY, VALUE, ISWARM))
+    syntax Exp     ::= Int
+    syntax KResult ::= Int
+    syntax Exp ::= Ccall         ( Schedule , BExp , Int , Int , Int , Bool ) [strict(2)]
+                 | Ccallgas      ( Schedule , BExp , Int , Int , Int , Bool ) [strict(2)]
+                 | Cselfdestruct ( Schedule , BExp , Int )                    [strict(2)]
+ // -------------------------------------------------------------------------------------
+   rule <k> Ccall(SCHED, ISEMPTY:Bool, GCAP, GAVAIL, VALUE, ISWARM)
+         => Cextra(SCHED, ISEMPTY, VALUE, ISWARM) +Int Cgascap(SCHED, GCAP, GAVAIL, Cextra(SCHED, ISEMPTY, VALUE, ISWARM)) ... </k>
 
-    rule Ccallgas(SCHED, ISEMPTY:Bool, GCAP, GAVAIL, VALUE, ISWARM)
-      => Cgascap(SCHED, GCAP, GAVAIL, Cextra(SCHED, ISEMPTY, VALUE, ISWARM)) +Int #if VALUE ==Int 0 #then 0 #else Gcallstipend < SCHED > #fi
+    rule <k> Ccallgas(SCHED, ISEMPTY:Bool, GCAP, GAVAIL, VALUE, ISWARM)
+          => Cgascap(SCHED, GCAP, GAVAIL, Cextra(SCHED, ISEMPTY, VALUE, ISWARM)) +Int #if VALUE ==Int 0 #then 0 #else Gcallstipend < SCHED > #fi ... </k>
 
-    rule Cselfdestruct(SCHED, ISEMPTY:Bool, BAL)
-      => Gselfdestruct < SCHED > +Int Cnew(SCHED, ISEMPTY andBool Gselfdestructnewaccount << SCHED >>, BAL)
+    rule <k> Cselfdestruct(SCHED, ISEMPTY:Bool, BAL)
+          => Gselfdestruct < SCHED > +Int Cnew(SCHED, ISEMPTY andBool Gselfdestructnewaccount << SCHED >>, BAL) ... </k>
 
     syntax Int ::= Cgascap        ( Schedule , Int , Int , Int )             [function, functional, smtlib(gas_Cgascap)       ]
                  | Csstore        ( Schedule , Int , Int , Int )             [function, functional, smtlib(gas_Csstore)       ]
@@ -2301,13 +2303,16 @@ There are several helpers for calculating gas (most of them also specified in th
     rule [Cmodexp.new]: Cmodexp(SCHED, DATA, BASELEN, EXPLEN, MODLEN) => maxInt(200, (#newMultComplexity(maxInt(BASELEN, MODLEN)) *Int maxInt(#adjustedExpLength(BASELEN, EXPLEN, DATA), 1)) /Int Gquaddivisor < SCHED > )
       requires Ghasaccesslist << SCHED >>
 
-    syntax Bool ::= #accountNonexistent ( Int ) [function, functional]
- // ------------------------------------------------------------------
-    rule #accountNonexistent(_) => true [owise]
+    syntax BExp    ::= Bool
+    syntax KResult ::= Bool
+    syntax BExp ::= #accountNonexistent ( Int )
+ // -------------------------------------------
+    rule <k> #accountNonexistent(ACCT) => true ... </k>
+         <activeAccounts> ACCTS </activeAccounts>
+      requires notBool ACCT in ACCTS
 
-    rule [[ #accountNonexistent(ACCT) => #accountEmpty(CODE, NONCE, BAL) andBool Gemptyisnonexistent << SCHED >> ]]
+    rule <k> #accountNonexistent(ACCT) => #accountEmpty(CODE, NONCE, BAL) andBool Gemptyisnonexistent << SCHED >> ... </k>
          <schedule> SCHED </schedule>
-         <activeAccounts> SetItem(ACCT) ... </activeAccounts>
          <account>
            <acctID>  ACCT  </acctID>
            <balance> BAL   </balance>
@@ -2316,8 +2321,8 @@ There are several helpers for calculating gas (most of them also specified in th
            ...
          </account>
 
-    syntax Bool ::= #accountEmpty ( AccountCode , Int , Int ) [function, functional, klabel(accountEmpty), symbol]
- // --------------------------------------------------------------------------------------------------------------
+    syntax Bool ::= #accountEmpty ( AccountCode , Int , Int ) [function, klabel(accountEmpty), symbol]
+ // --------------------------------------------------------------------------------------------------
     rule #accountEmpty(CODE, NONCE, BAL) => CODE ==K .ByteArray andBool NONCE ==Int 0 andBool BAL ==Int 0
 
     syntax Int ::= #allBut64th ( Int ) [function, functional, smtlib(gas_allBut64th)]
