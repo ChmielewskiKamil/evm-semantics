@@ -2,7 +2,7 @@ from logging import Logger
 from typing import Collection, Iterable, List, Optional, Tuple
 
 from pyk.cterm import CTerm
-from pyk.kast import KApply, KClaim, KDefinition, KFlatModule, KImport, KInner, KRule, KVariable
+from pyk.kast import KApply, KClaim, KDefinition, KFlatModule, KImport, KInner, KRewrite, KRule, KVariable
 from pyk.kastManip import (
     abstract_term_safely,
     bool_to_ml_pred,
@@ -21,6 +21,17 @@ from pyk.kcfg import KCFG
 from pyk.ktool import KPrint, KProve
 from pyk.prelude.kbool import FALSE
 from pyk.prelude.ml import mlAnd
+
+
+# TODO: Needs to be reviewed for accuracy
+def KDefinition__semantic_rules(_self: KDefinition) -> List[KRule]:  # noqa: N802
+    _semantic_rules = []
+    for r in _self.rules:
+        if type(r.body) is KApply and r.body.label.name == '<generatedTop>':
+            _semantic_rules.append(r)
+        elif type(r.body) is KRewrite and type(r.body.lhs) is KApply and r.body.lhs.label.name == '<generatedTop>':
+            _semantic_rules.append(r)
+    return _semantic_rules
 
 
 def KCFG__replace_node(cfg: KCFG, node_id: str, new_cterm: CTerm) -> KCFG:  # noqa: N802
