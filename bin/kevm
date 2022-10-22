@@ -292,16 +292,15 @@ run_solc() {
 }
 
 run_foundry_kompile() {
-    local contract_name
-
-    echo "${backend_dir}"
     run_kevm_pyk foundry-kompile --definition "${backend_dir}" "$@"
 }
 
 run_foundry_prove() {
-    local contract_name
-
     run_kevm_pyk foundry-prove "$@"
+}
+
+run_act_to_k() {
+    run_kevm_pyk act-to-k --definition "${backend_dir}" "$@"
 }
 
 # Main
@@ -399,6 +398,7 @@ kevm_host='127.0.0.1'
 [[ ! "${run_command}" == solc-to-k       ]] || backend=haskell
 [[ ! "${run_command}" == foundry-kompile ]] || backend=foundry
 [[ ! "${run_command}" == foundry-prove   ]] || backend=foundry
+[[ ! "${run_command}" == act-to-k        ]] || backend=foundry
 [[ ! "${run_command}" == interpret       ]] || unparse=false
 args=()
 while [[ $# -gt 0 ]]; do
@@ -443,7 +443,7 @@ if ${pyk}; then
 fi
 
 # get the run file
-if [[ "${run_command}" != 'foundry-kompile' ]] && [[ "${run_command}" != 'foundry-prove' ]]; then
+if [[ "${run_command}" != 'foundry-kompile' ]] && [[ "${run_command}" != 'foundry-prove' ]] && [[ "${run_command}" != 'act-to-k' ]]; then
     run_file="$1" ; shift
     if [[ "${run_file}" == '-' ]]; then
         tmp_input="$(mktemp)"
@@ -475,5 +475,6 @@ case "$run_command-$backend" in
     solc-to-k-*                               ) run_solc            "$@" ;;
     foundry-kompile-*                         ) run_foundry_kompile "$@" ;;
     foundry-prove-*                           ) run_foundry_prove   "$@" ;;
+    act-to-k-*                                ) run_act_to_k        "$@" ;;
     *) ${KEVM} help ; fatal "Unknown command on backend: $run_command $backend" ;;
 esac
