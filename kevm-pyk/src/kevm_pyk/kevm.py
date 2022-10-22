@@ -2,12 +2,12 @@ import logging
 import sys
 from pathlib import Path
 from subprocess import CalledProcessError
-from typing import Any, Dict, Final, Iterable, List, Optional
+from typing import Any, Callable, Dict, Final, Iterable, List, Optional, Tuple
 
 from pyk.cli_utils import run_process
 from pyk.cterm import CTerm
-from pyk.kast import KApply, KInner, KLabel, KSequence, KSort, KToken, KVariable, build_assoc
-from pyk.kastManip import flatten_label, get_cell
+from pyk.kast import KApply, KInner, KLabel, KRule, KSequence, KSort, KToken, KVariable, Subst, build_assoc
+from pyk.kastManip import bool_to_ml_pred, extract_lhs, extract_rhs, flatten_label, get_cell
 from pyk.ktool import KProve, KRun
 from pyk.ktool.kompile import KompileBackend
 from pyk.ktool.kprint import paren
@@ -17,7 +17,7 @@ from pyk.prelude.ml import mlAnd, mlEqualsTrue
 from pyk.prelude.string import stringToken
 from pyk.utils import unique
 
-from .utils import add_include_arg
+from .utils import KDefinition__semantic_rules, add_include_arg
 
 _LOGGER: Final = logging.getLogger(__name__)
 
@@ -26,6 +26,9 @@ _LOGGER: Final = logging.getLogger(__name__)
 
 
 class KEVM(KProve, KRun):
+    semantic_rules: List[KRule]
+    _rule_index: Optional[Callable[[CTerm], List[KRule]]]
+
     def __init__(
         self,
         definition_dir: Path,
@@ -39,6 +42,54 @@ class KEVM(KProve, KRun):
         KProve.__init__(self, definition_dir, use_directory=use_directory, main_file=main_file, profile=profile)
         KRun.__init__(self, definition_dir, use_directory=use_directory, profile=profile)
         KEVM._patch_symbol_table(self.symbol_table)
+        self.semantic_rules = KDefinition__semantic_rules(self.definition)
+        self._rule_index = None
+
+    @property
+    def rule_index(self) -> Callable[[CTerm], List[KRule]]:
+        if not self._rule_index:
+
+            def __rule_index(_cterm: CTerm) -> List[KRule]:
+                return self.semantic_rules
+
+            self._rule_index = __rule_index
+        return self._rule_index
+
+    def rewrite_step(self, cterm: CTerm) -> Optional[CTerm]:
+        next_cterms: List[CTerm] = []
+        rules = self.rule_index(cterm)
+        _LOGGER.info(f'Found {len(rules)} rules in index.')
+        for r in rules:
+            rule_lhs = CTerm(mlAnd([extract_lhs(r.body), bool_to_ml_pred(r.requires)]))
+            # TODO: needs to be unify_with_constraint instead
+            rule_k_cell = get_cell(rule_lhs.config, 'K_CELL')
+            term_k_cell = get_cell(cterm.config, 'K_CELL')
+            k_cell_match = rule_k_cell.match(term_k_cell)
+            _LOGGER.info(
+                'K Cell Match:\n'
+                f'Rule K Cell: {self.pretty_print(rule_k_cell)}\n'
+                f'Term K Cell: {self.pretty_print(term_k_cell)}\n'
+                f'Match: {k_cell_match}\n'
+            )
+            rule_match = rule_lhs.match_with_constraint(cterm)
+            if rule_match:
+                # TODO: CTerm.match_with_constraint should return a Subst
+                _subst, constraint = rule_match
+                subst = Subst(_subst)
+                next_cterm = CTerm(subst(mlAnd([extract_rhs(r.body), bool_to_ml_pred(r.ensures)])))
+                next_cterm = next_cterm.add_constraint(constraint)
+                next_cterms.append(next_cterm)
+        if len(next_cterms) == 1:
+            return next_cterms[0]
+        return None
+
+    def get_basic_block_fast(self, init_cterm: CTerm) -> Tuple[int, CTerm]:
+        depth = 0
+        _curr_cterm = init_cterm
+        while next_cterm := self.rewrite_step(_curr_cterm):
+            depth += 1
+            _curr_cterm = next_cterm
+        return depth, _curr_cterm
 
     @staticmethod
     def kompile(
