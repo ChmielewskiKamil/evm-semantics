@@ -8,6 +8,7 @@ from pyk.cli_utils import run_process
 from pyk.kast import KApply, KInner, KLabel, KSort, KToken, KVariable, build_assoc
 from pyk.kastManip import flatten_label, get_cell
 from pyk.ktool import KProve, KRun
+from pyk.ktool.kompile import KompileBackend
 from pyk.ktool.kprint import paren
 from pyk.prelude.kbool import notBool
 from pyk.prelude.kint import intToken
@@ -39,6 +40,7 @@ class KEVM(KProve, KRun):
     @staticmethod
     def kompile(
         definition_dir: Path,
+        backend: KompileBackend,
         main_file: Path,
         emit_json: bool = True,
         includes: Iterable[str] = (),
@@ -46,9 +48,15 @@ class KEVM(KProve, KRun):
         syntax_module_name: Optional[str] = None,
         md_selector: Optional[str] = None,
         profile: bool = False,
+        debug: bool = False,
+        ccopts: Iterable[str] = (),
+        llvm_kompile: bool = True,
+        optimization: int = 0,
     ) -> 'KEVM':
         command = ['kompile', '--output-definition', str(definition_dir), str(main_file)]
-        command += ['--backend', 'haskell']
+        if debug:
+            command += ['--debug']
+        command += ['--backend', backend.value]
         command += ['--main-module', main_module_name] if main_module_name else []
         command += ['--syntax-module', syntax_module_name] if syntax_module_name else []
         command += ['--md-selector', md_selector] if md_selector else []
@@ -56,6 +64,13 @@ class KEVM(KProve, KRun):
         command += add_include_arg(includes)
         if emit_json:
             command += ['--emit-json']
+        if not llvm_kompile:
+            command += ['--no-llvm-kompile']
+        if ccopts:
+            for ccopt in ccopts:
+                command += ['-ccopt', ccopt]
+        if 0 < optimization and optimization <= 3:
+            command += [f'-O{optimization}']
         command += ['--concrete-rules', ','.join(KEVM.concrete_rules())]
         try:
             run_process(command, logger=_LOGGER, profile=profile)
@@ -327,7 +342,6 @@ class Foundry(KEVM):
         use_directory: Optional[Path] = None,
         profile: bool = False,
     ) -> None:
-        # copied from KEVM class and adapted to inherit KPrint instead
         KEVM.__init__(self, definition_dir, main_file=main_file, use_directory=use_directory, profile=profile)
         Foundry._patch_symbol_table(self.symbol_table)
 
