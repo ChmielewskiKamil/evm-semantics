@@ -1134,6 +1134,170 @@ module ETCHTEST-BIN-RUNTIME
 
 endmodule
 
+module EXAMPLESTEST-BIN-RUNTIME
+    imports public FOUNDRY
+    
+    syntax Contract ::= ExamplesTestContract
+    
+    syntax ExamplesTestContract ::= "ExamplesTest" [symbol(), klabel(contract_ExamplesTest)]
+    
+    rule  ( #binRuntime ( ExamplesTest ) => #parseByteStack ( "0x608060405234801561001057600080fd5b50600436106100cf5760003560e01c806360e734ec1161008c578063ba414fa611610066578063ba414fa614610193578063f8ccbf47146101ab578063fa7626d4146101be578063fdfbd859146101cb57600080fd5b806360e734ec1461015a578063a5fab3251461016d578063a76f927c1461018057600080fd5b80630124d4a0146100d45780630a9254e4146100e75780631490583f146100e957806319e9b44b146100fc5780633a7684631461010f5780633c4a8f4a14610147575b600080fd5b6100e76100e2366004610867565b6101de565b005b6100e76100f7366004610867565b610207565b6100e761010a366004610867565b610235565b61012a737109709ecfa91a80626ff3989d68f67f5b1dd12d81565b6040516001600160a01b0390911681526020015b60405180910390f35b6100e7610155366004610867565b61025a565b6100e7610168366004610867565b6102ac565b6100e761017b366004610867565b61032b565b6100e761018e366004610867565b610350565b61019b6103d9565b604051901515815260200161013e565b60005461019b9062010000900460ff1681565b60005461019b9060ff1681565b6100e76101d9366004610867565b610504565b60006101ea838361051a565b905061020281841080156101fd57508183105b610540565b505050565b600061021383836105b7565b9050600061022184846105e1565b905061022f82821115610540565b50505050565b600061024183836105f6565b90506102028382101580156101fd575082821015610540565b600061026f61026984846105b7565b83610610565b9050600061028661028085856105e1565b8461051a565b905061029484831115610540565b6102a084821115610540565b61022f82821115610540565b604051632631f2b160e11b8152818311156004820152737109709ecfa91a80626ff3989d68f67f5b1dd12d90634c63e56290602401600060405180830381600087803b1580156102fb57600080fd5b505af115801561030f573d6000803e3d6000fd5b50505050600061031f83836105f6565b90506102028183610630565b6000610337838361051a565b90506102028184111580156101fd575081831115610540565b604051632631f2b160e11b8152818311156004820152737109709ecfa91a80626ff3989d68f67f5b1dd12d90634c63e56290602401600060405180830381600087803b15801561039f57600080fd5b505af11580156103b3573d6000803e3d6000fd5b5050505060006103c383836105f6565b90506102026103d382600161089f565b84610630565b60008054610100900460ff16156103f95750600054610100900460ff1690565b6000737109709ecfa91a80626ff3989d68f67f5b1dd12d3b156104ff5760408051737109709ecfa91a80626ff3989d68f67f5b1dd12d602082018190526519985a5b195960d21b82840152825180830384018152606083019093526000929091610487917f667f9d70ca411d70ead50d8d5c22070dafc36ad75f3dcf5e7237b22ade9aecc4916080016108f2565b60408051601f19818403018152908290526104a191610916565b6000604051808303816000865af19150503d80600081146104de576040519150601f19603f3d011682016040523d82523d6000602084013e6104e3565b606091505b50915050808060200190518101906104fb9190610922565b9150505b919050565b60006105108383610610565b9050600061022184845b6000670de0b6b3a764000061052f8385610944565b6105399190610963565b9392505050565b806105b4577f41304facd9323d75b11bcdd609cb38effffdb05710f7caf0e9b16c6d9d709f506040516105a49060208082526017908201527f4572726f723a20417373657274696f6e204661696c6564000000000000000000604082015260600190565b60405180910390a16105b461075b565b50565b6000816105c5600282610963565b6105d7670de0b6b3a764000086610944565b61052f919061089f565b60008161052f670de0b6b3a764000085610944565b60008183101561060757508061060a565b50815b92915050565b6000670de0b6b3a7640000610626600282610963565b6105d78486610944565b808214610757577f41304facd9323d75b11bcdd609cb38effffdb05710f7caf0e9b16c6d9d709f506040516106a19060208082526022908201527f4572726f723a2061203d3d2062206e6f7420736174697366696564205b75696e604082015261745d60f01b606082015260800190565b60405180910390a160408051818152600a81830152690808115e1c1958dd195960b21b60608201526020810183905290517fb2de2fbe801a0df6c0cbddfd448ba3c41d48a040ca35c56c8196ef0fcae721a89181900360800190a160408051818152600a8183015269080808081058dd1d585b60b21b60608201526020810184905290517fb2de2fbe801a0df6c0cbddfd448ba3c41d48a040ca35c56c8196ef0fcae721a89181900360800190a161075761075b565b5050565b737109709ecfa91a80626ff3989d68f67f5b1dd12d3b156108565760408051737109709ecfa91a80626ff3989d68f67f5b1dd12d602082018190526519985a5b195960d21b9282019290925260016060820152600091907f70ca10bbd0dbfd9020a9f4b13402c16cb120705e0d1c0aeab10fa353ae586fc49060800160408051601f19818403018152908290526107f592916020016108f2565b60408051601f198184030181529082905261080f91610916565b6000604051808303816000865af19150503d806000811461084c576040519150601f19603f3d011682016040523d82523d6000602084013e610851565b606091505b505050505b6000805461ff001916610100179055565b6000806040838503121561087a57600080fd5b50508035926020909101359150565b634e487b7160e01b600052601160045260246000fd5b600082198211156108b2576108b2610889565b500190565b6000815160005b818110156108d857602081850181015186830152016108be565b818111156108e7576000828601525b509290920192915050565b6001600160e01b031983168152600061090e60048301846108b7565b949350505050565b600061053982846108b7565b60006020828403121561093457600080fd5b8151801515811461053957600080fd5b600081600019048311821515161561095e5761095e610889565b500290565b60008261098057634e487b7160e01b600052601260045260246000fd5b50049056fea2646970667358221220d6241a9e1e5fc5dfe057dc0bcad5963b6f0ffb239f460de83c9161bf9c4ba6fe64736f6c634300080d0033" ) )
+      
+    
+    syntax Field ::= ExamplesTestField
+    
+    syntax ExamplesTestField ::= "IS_TEST" [symbol(), klabel(field_ExamplesTest_IS_TEST)]
+    
+    syntax ExamplesTestField ::= "_failed" [symbol(), klabel(field_ExamplesTest__failed)]
+    
+    syntax ExamplesTestField ::= "IS_SCRIPT" [symbol(), klabel(field_ExamplesTest_IS_SCRIPT)]
+    
+    syntax ExamplesTestField ::= "stdstore" [symbol(), klabel(field_ExamplesTest_stdstore)]
+    
+    rule  ( #loc ( ExamplesTest . IS_TEST ) => 0 )
+      
+    
+    rule  ( #loc ( ExamplesTest . _failed ) => 0 )
+      
+    
+    rule  ( #loc ( ExamplesTest . IS_SCRIPT ) => 0 )
+      
+    
+    rule  ( #loc ( ExamplesTest . stdstore ) => 1 )
+      
+    
+    syntax ByteArray ::= ExamplesTestContract "." ExamplesTestMethod [function(), symbol(), klabel(method_ExamplesTest)]
+    
+    syntax ExamplesTestMethod ::= "IS_SCRIPT" "(" ")" [symbol(), klabel(method_ExamplesTest_IS_SCRIPT)]
+    
+    syntax ExamplesTestMethod ::= "IS_TEST" "(" ")" [symbol(), klabel(method_ExamplesTest_IS_TEST)]
+    
+    syntax ExamplesTestMethod ::= "failed" "(" ")" [symbol(), klabel(method_ExamplesTest_failed)]
+    
+    syntax ExamplesTestMethod ::= "setUp" "(" ")" [symbol(), klabel(method_ExamplesTest_setUp)]
+    
+    syntax ExamplesTestMethod ::= "test_decreasing_div" "(" Int "," Int ")" [symbol(), klabel(method_ExamplesTest_test_decreasing_div)]
+    
+    syntax ExamplesTestMethod ::= "test_max1" "(" Int "," Int ")" [symbol(), klabel(method_ExamplesTest_test_max1)]
+    
+    syntax ExamplesTestMethod ::= "test_max1_broken" "(" Int "," Int ")" [symbol(), klabel(method_ExamplesTest_test_max1_broken)]
+    
+    syntax ExamplesTestMethod ::= "test_max2" "(" Int "," Int ")" [symbol(), klabel(method_ExamplesTest_test_max2)]
+    
+    syntax ExamplesTestMethod ::= "test_wdiv_rounding" "(" Int "," Int ")" [symbol(), klabel(method_ExamplesTest_test_wdiv_rounding)]
+    
+    syntax ExamplesTestMethod ::= "test_wmul_increasing" "(" Int "," Int ")" [symbol(), klabel(method_ExamplesTest_test_wmul_increasing)]
+    
+    syntax ExamplesTestMethod ::= "test_wmul_rounding" "(" Int "," Int ")" [symbol(), klabel(method_ExamplesTest_test_wmul_rounding)]
+    
+    syntax ExamplesTestMethod ::= "test_wmul_strictly_increasing" "(" Int "," Int ")" [symbol(), klabel(method_ExamplesTest_test_wmul_strictly_increasing)]
+    
+    syntax ExamplesTestMethod ::= "vm" "(" ")" [symbol(), klabel(method_ExamplesTest_vm)]
+    
+    rule  ( ExamplesTest . IS_SCRIPT ( ) => #abiCallData ( "IS_SCRIPT" , .TypedArgs ) )
+      
+    
+    rule  ( ExamplesTest . IS_TEST ( ) => #abiCallData ( "IS_TEST" , .TypedArgs ) )
+      
+    
+    rule  ( ExamplesTest . failed ( ) => #abiCallData ( "failed" , .TypedArgs ) )
+      
+    
+    rule  ( ExamplesTest . setUp ( ) => #abiCallData ( "setUp" , .TypedArgs ) )
+      
+    
+    rule  ( ExamplesTest . test_decreasing_div ( V0_a , V1_b ) => #abiCallData ( "test_decreasing_div" , #uint256 ( V0_a ) , #uint256 ( V1_b ) , .TypedArgs ) )
+       ensures ( #rangeUInt ( 256 , V0_a )
+       andBool ( #rangeUInt ( 256 , V1_b )
+               ))
+      
+    
+    rule  ( ExamplesTest . test_max1 ( V0_a , V1_b ) => #abiCallData ( "test_max1" , #uint256 ( V0_a ) , #uint256 ( V1_b ) , .TypedArgs ) )
+       ensures ( #rangeUInt ( 256 , V0_a )
+       andBool ( #rangeUInt ( 256 , V1_b )
+               ))
+      
+    
+    rule  ( ExamplesTest . test_max1_broken ( V0_a , V1_b ) => #abiCallData ( "test_max1_broken" , #uint256 ( V0_a ) , #uint256 ( V1_b ) , .TypedArgs ) )
+       ensures ( #rangeUInt ( 256 , V0_a )
+       andBool ( #rangeUInt ( 256 , V1_b )
+               ))
+      
+    
+    rule  ( ExamplesTest . test_max2 ( V0_x , V1_y ) => #abiCallData ( "test_max2" , #uint256 ( V0_x ) , #uint256 ( V1_y ) , .TypedArgs ) )
+       ensures ( #rangeUInt ( 256 , V0_x )
+       andBool ( #rangeUInt ( 256 , V1_y )
+               ))
+      
+    
+    rule  ( ExamplesTest . test_wdiv_rounding ( V0_a , V1_b ) => #abiCallData ( "test_wdiv_rounding" , #uint256 ( V0_a ) , #uint256 ( V1_b ) , .TypedArgs ) )
+       ensures ( #rangeUInt ( 256 , V0_a )
+       andBool ( #rangeUInt ( 256 , V1_b )
+               ))
+      
+    
+    rule  ( ExamplesTest . test_wmul_increasing ( V0_a , V1_b ) => #abiCallData ( "test_wmul_increasing" , #uint256 ( V0_a ) , #uint256 ( V1_b ) , .TypedArgs ) )
+       ensures ( #rangeUInt ( 256 , V0_a )
+       andBool ( #rangeUInt ( 256 , V1_b )
+               ))
+      
+    
+    rule  ( ExamplesTest . test_wmul_rounding ( V0_a , V1_b ) => #abiCallData ( "test_wmul_rounding" , #uint256 ( V0_a ) , #uint256 ( V1_b ) , .TypedArgs ) )
+       ensures ( #rangeUInt ( 256 , V0_a )
+       andBool ( #rangeUInt ( 256 , V1_b )
+               ))
+      
+    
+    rule  ( ExamplesTest . test_wmul_strictly_increasing ( V0_a , V1_b ) => #abiCallData ( "test_wmul_strictly_increasing" , #uint256 ( V0_a ) , #uint256 ( V1_b ) , .TypedArgs ) )
+       ensures ( #rangeUInt ( 256 , V0_a )
+       andBool ( #rangeUInt ( 256 , V1_b )
+               ))
+      
+    
+    rule  ( ExamplesTest . vm ( ) => #abiCallData ( "vm" , .TypedArgs ) )
+      
+    
+    rule  ( selector ( "IS_SCRIPT" ) => 4174167879 )
+      
+    
+    rule  ( selector ( "IS_TEST" ) => 4202047188 )
+      
+    
+    rule  ( selector ( "failed" ) => 3124842406 )
+      
+    
+    rule  ( selector ( "setUp" ) => 177362148 )
+      
+    
+    rule  ( selector ( "test_decreasing_div" ) => 1011519306 )
+      
+    
+    rule  ( selector ( "test_max1" ) => 1625765100 )
+      
+    
+    rule  ( selector ( "test_max1_broken" ) => 2809107068 )
+      
+    
+    rule  ( selector ( "test_max2" ) => 434746443 )
+      
+    
+    rule  ( selector ( "test_wdiv_rounding" ) => 345004095 )
+      
+    
+    rule  ( selector ( "test_wmul_increasing" ) => 2784670501 )
+      
+    
+    rule  ( selector ( "test_wmul_rounding" ) => 4261140569 )
+      
+    
+    rule  ( selector ( "test_wmul_strictly_increasing" ) => 19190944 )
+      
+    
+    rule  ( selector ( "vm" ) => 980845667 )
+      
+
+endmodule
+
 module FFITEST-BIN-RUNTIME
     imports public FOUNDRY
     
@@ -5680,6 +5844,7 @@ module FOUNDRY-MAIN
     imports public EMITCONTRACTTEST-BIN-RUNTIME
     imports public ENVTEST-BIN-RUNTIME
     imports public ETCHTEST-BIN-RUNTIME
+    imports public EXAMPLESTEST-BIN-RUNTIME
     imports public FFITEST-BIN-RUNTIME
     imports public FILESTEST-BIN-RUNTIME
     imports public FORKTEST-BIN-RUNTIME
