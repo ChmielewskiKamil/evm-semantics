@@ -2,7 +2,19 @@ from logging import Logger
 from typing import Collection, Iterable, List, Optional, Tuple
 
 from pyk.cterm import CTerm
-from pyk.kast import KApply, KClaim, KDefinition, KFlatModule, KImport, KInner, KNonTerminal, KRewrite, KRule, KVariable
+from pyk.kast import (
+    KApply,
+    KClaim,
+    KDefinition,
+    KFlatModule,
+    KImport,
+    KInner,
+    KNonTerminal,
+    KRewrite,
+    KRule,
+    KVariable,
+    Subst,
+)
 from pyk.kastManip import (
     abstract_term_safely,
     bool_to_ml_pred,
@@ -11,8 +23,11 @@ from pyk.kastManip import (
     extract_rhs,
     flatten_label,
     free_vars,
+    get_cell,
     is_anon_var,
+    minimize_term,
     ml_pred_to_bool,
+    push_down_rewrites,
     remove_generated_cells,
     split_config_and_constraints,
     split_config_from,
@@ -21,8 +36,9 @@ from pyk.kastManip import (
 )
 from pyk.kcfg import KCFG
 from pyk.ktool import KPrint, KProve
+from pyk.prelude.k import GENERATED_TOP_CELL
 from pyk.prelude.kbool import FALSE
-from pyk.prelude.ml import mlAnd
+from pyk.prelude.ml import mlAnd, mlTop
 
 
 def instantiate_cell_vars(definition: KDefinition, term: KInner) -> KInner:
@@ -188,3 +204,85 @@ def sanitize_config(defn: KDefinition, init_term: KInner) -> KInner:
         new_term = undo_aliases(defn, new_term)
 
     return new_term
+
+
+def check_implication(kprint: KPrint, concrete: CTerm, abstract: CTerm) -> Tuple[bool, str]:
+    def _is_cell_subst(csubst: KInner) -> bool:
+        if type(csubst) is KApply and csubst.label.name == '_==K_':
+            csubst_arg = csubst.args[0]
+            if type(csubst_arg) is KVariable and csubst_arg.name.endswith('_CELL'):
+                return True
+        return False
+
+    def _is_negative_cell_subst(constraint: KInner) -> bool:
+        constraint_bool = ml_pred_to_bool(constraint)
+        if type(constraint_bool) is KApply and constraint_bool.label.name == 'notBool_':
+            negative_constraint = constraint_bool.args[0]
+            if type(negative_constraint) is KApply and negative_constraint.label.name == '_andBool_':
+                constraints = flatten_label('_andBool_', negative_constraint)
+                cell_constraints = list(filter(_is_cell_subst, constraints))
+                if len(cell_constraints) > 0:
+                    return True
+        return False
+
+    concrete_config, *concrete_constraints = concrete
+    abstract_config, *abstract_constraints = abstract
+    config_match = abstract_config.match(concrete_config)
+    minimized_rewrite_str = kprint.pretty_print(
+        minimize_term(push_down_rewrites(KRewrite(concrete_config, abstract_config)))
+    )
+    if config_match is None:
+        _, concrete_subst = split_config_from(concrete_config)
+        cell_names = concrete_subst.keys()
+        failing_cells = []
+        combined_subst = Subst()
+        for cell in cell_names:
+            concrete_cell = get_cell(concrete_config, cell)
+            abstract_cell = get_cell(abstract_config, cell)
+            cell_match = abstract_cell.match(concrete_cell)
+            if cell_match is None or combined_subst.union(cell_match) is None:
+                failing_cell = push_down_rewrites(KRewrite(concrete_cell, abstract_cell))
+                failing_cell = no_cell_rewrite_to_dots(failing_cell)
+                failing_cells.append((cell, failing_cell))
+            else:
+                new_subst = combined_subst.union(cell_match)
+                assert new_subst is not None
+                combined_subst = new_subst
+                abstract_config = cell_match.apply(abstract_config)
+        failing_cells_str = '\n'.join(
+            f'{cell}: {kprint.pretty_print(minimize_term(rew))}' for cell, rew in failing_cells
+        )
+        return (
+            False,
+            f'Structural matching failed (concrete => abstract):\n{minimized_rewrite_str}\n\nThe following cells failed individually (concrete => abstract):\n{failing_cells_str}',
+        )
+    else:
+        abstract_constraints = [config_match.apply(abstract_constraint) for abstract_constraint in abstract_constraints]
+        abstract_constraints = list(
+            filter(
+                lambda x: not CTerm._is_spurious_constraint(x),
+                [config_match.apply(abstract_constraint) for abstract_constraint in abstract_constraints],
+            )
+        )
+        impl = CTerm._ml_impl(concrete_constraints, abstract_constraints)
+        if impl != mlTop(GENERATED_TOP_CELL):
+            fail_str = kprint.pretty_print(impl)
+            negative_cell_constraints = list(filter(_is_negative_cell_subst, concrete_constraints))
+            if len(negative_cell_constraints) > 0:
+                fail_str = f'{fail_str}\n\nNegated cell substitutions found (consider using _ => ?_):\n' + '\n'.join(
+                    [kprint.pretty_print(cc) for cc in negative_cell_constraints]
+                )
+            return (False, f'Implication check failed, the following is the remaining implication:\n{fail_str}')
+    return (True, '')
+
+
+def no_cell_rewrite_to_dots(term: KInner) -> KInner:
+    def _no_cell_rewrite_to_dots(_term: KInner) -> KInner:
+        if type(_term) is KApply and _term.is_cell:
+            lhs = extract_lhs(_term)
+            rhs = extract_rhs(_term)
+            if lhs == rhs:
+                return KApply(_term.label, [abstract_term_safely(lhs, base_name=_term.label.name)])
+        return _term
+
+    return bottom_up(_no_cell_rewrite_to_dots, term)
