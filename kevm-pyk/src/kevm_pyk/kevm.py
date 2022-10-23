@@ -195,8 +195,9 @@ class KEVM(KProve, KRun):
             if opcode_info:
                 op, pc = opcode_info
                 new_kcell = KSequence([KEVM.next_op(op), k_cell_match['REST']])
-                new_config = set_cell(config, 'K_CELL', new_kcell)
-                return CTerm(mlAnd([new_config] + constraints))
+                config = set_cell(config, 'K_CELL', new_kcell)
+
+        constraints = [self.simplify_constraint(c) for c in constraints]
 
         # PC >=Int #sizeByteArray(PROGRAM)
         constraint_pattern = mlEqualsTrue(
@@ -208,7 +209,6 @@ class KEVM(KProve, KRun):
                 if self.opcode_lookup(constraint_match['PROGRAM'], constraint_match['PC'], sched_cell):
                     return None
 
-        constraints = [self.simplify_constraint(c) for c in constraints]
         if any(map(is_bottom, constraints)):
             return None
 
