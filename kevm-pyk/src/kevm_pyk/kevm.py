@@ -1,3 +1,4 @@
+import hashlib
 import json
 import logging
 import sys
@@ -105,23 +106,50 @@ class KEVM(KProve, KRun):
 
     def opcode_lookup(self, program: KInner, pcount: KInner, schedule: KInner) -> Optional[Tuple[KInner, int]]:
         if program not in self._opcode_lookup:
-            _LOGGER.info(f'Computing bytecode disassembly: {self.pretty_print(program)}')
-            lookup_evm_pgm = KApply('dasm_program___FOUNDRY_EthereumSimulation_ByteArray_Schedule', [program, schedule])
-            run_args = [
-                "-cSCHEDULE=LblLONDON'Unds'EVM{}()",
-                '-pSCHEDULE=cat',
-                '-cMODE=LblNORMAL{}()',
-                '-pMODE=cat',
-                '-cCHAINID=\\dv{SortInt{}}("1")',
-                '-pCHAINID=cat',
-                '--no-expand-macros',
-            ]
-            result = self.run(lookup_evm_pgm, args=run_args)
-            k_cell = get_cell(result.config, 'K_CELL')
-            if type(k_cell) is KSequence and len(k_cell.items) > 0:
-                k_cell = k_cell.items[0]
-            if type(k_cell) is KApply and k_cell.label.name == 'dasm_result__FOUNDRY_EthereumSimulation_Map':
-                self._opcode_lookup[program] = KEVM.opcode_map_to_dict(k_cell.args[0])
+            program_hash = hashlib.md5(json.dumps(program.to_dict()).encode('utf-8')).hexdigest()
+            program_hash_file = self.use_directory / f'{program_hash}.json'
+            if program_hash_file.exists():
+                pdict = {}
+                with open(program_hash_file, 'r') as phf:
+                    for _pc, _op, width in json.loads(phf.read()):
+                        op = KAst.from_dict(_op)
+                        assert isinstance(op, KInner)
+                        pc = KAst.from_dict(_pc)
+                        assert isinstance(pc, KInner)
+                        assert type(width) is int
+                        pdict[pc] = (op, width)
+                self._opcode_lookup[program] = pdict
+                _LOGGER.info(f'Loaded bytecode disassembly for {self.pretty_print(program)} from: {program_hash_file}')
+
+            else:
+                _LOGGER.info(f'Computing bytecode disassembly: {self.pretty_print(program)}')
+                lookup_evm_pgm = KApply(
+                    'dasm_program___FOUNDRY_EthereumSimulation_ByteArray_Schedule', [program, schedule]
+                )
+                run_args = [
+                    "-cSCHEDULE=LblLONDON'Unds'EVM{}()",
+                    '-pSCHEDULE=cat',
+                    '-cMODE=LblNORMAL{}()',
+                    '-pMODE=cat',
+                    '-cCHAINID=\\dv{SortInt{}}("1")',
+                    '-pCHAINID=cat',
+                    '--no-expand-macros',
+                ]
+                result = self.run(lookup_evm_pgm, args=run_args)
+                k_cell = get_cell(result.config, 'K_CELL')
+                if type(k_cell) is KSequence and len(k_cell.items) > 0:
+                    k_cell = k_cell.items[0]
+                if type(k_cell) is KApply and k_cell.label.name == 'dasm_result__FOUNDRY_EthereumSimulation_Map':
+                    self._opcode_lookup[program] = KEVM.opcode_map_to_dict(k_cell.args[0])
+
+                with open(program_hash_file, 'w') as phf:
+                    json_program_lookup = []
+                    for pc, (op, width) in self._opcode_lookup[program].items():
+                        json_program_lookup.append([pc.to_dict(), op.to_dict(), width])
+                    phf.write(json.dumps(json_program_lookup))
+                    _LOGGER.info(
+                        f'Recorded bytecode disassembly for {self.pretty_print(program)} at: {program_hash_file}'
+                    )
 
         if program in self._opcode_lookup and pcount in self._opcode_lookup[program]:
             return self._opcode_lookup[program][pcount]
