@@ -293,6 +293,10 @@ class KEVM(KProve, KRun):
         return KApply('#execute_EVM_KItem')
 
     @staticmethod
+    def next_op(op: KInner) -> KApply:
+        return KApply('#next[_]_EVM_InternalOp_OpCode', [op])
+
+    @staticmethod
     def jumpi() -> KApply:
         return KApply('JUMPI_EVM_BinStackOp')
 
