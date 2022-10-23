@@ -584,7 +584,7 @@ def exec_foundry_show(
     minimize: bool = True,
     **kwargs: Any,
 ) -> None:
-    definition_dir = foundry_out / 'kompiled'
+    definition_dir = foundry_out / 'kompiled' / 'haskell'
     use_directory = foundry_out / 'specs'
     use_directory.mkdir(parents=True, exist_ok=True)
     kcfgs_dir = foundry_out / 'kcfgs'
