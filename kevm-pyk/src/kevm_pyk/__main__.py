@@ -175,14 +175,16 @@ def exec_foundry_kompile(
     _ignore_arg(kwargs, 'o3', '-O3')
     main_module = 'FOUNDRY-MAIN'
     syntax_module = 'FOUNDRY-MAIN'
-    foundry_definition_dir = foundry_out / 'kompiled'
-    foundry_main_file = foundry_definition_dir / 'foundry.k'
-    kompiled_timestamp = foundry_definition_dir / 'timestamp'
+    foundry_kompiled_dir = foundry_out / 'kompiled'
+    foundry_haskell_dir = foundry_kompiled_dir / 'haskell'
+    foundry_main_file = foundry_kompiled_dir / 'foundry.k'
+    haskell_kompiled_timestamp = foundry_haskell_dir / 'timestamp'
     requires = ['foundry.md'] + list(requires)
     imports = ['FOUNDRY'] + list(imports)
 
-    if not foundry_definition_dir.exists():
-        foundry_definition_dir.mkdir()
+    for dir in [foundry_kompiled_dir, foundry_haskell_dir]:
+        if not dir.exists():
+            dir.mkdir()
 
     json_paths = _contract_json_paths(foundry_out)
     contracts = [_contract_from_json(json_path) for json_path in json_paths]
@@ -206,10 +208,10 @@ def exec_foundry_kompile(
             Foundry._patch_symbol_table(_kprint.symbol_table)
             fmf.write(_kprint.pretty_print(bin_runtime_definition) + '\n')
 
-    if regen or rekompile or not kompiled_timestamp.exists():
-        _LOGGER.info(f'Kompiling definition: {foundry_main_file}')
+    if regen or rekompile or not haskell_kompiled_timestamp.exists():
+        _LOGGER.info(f'Kompiling {foundry_main_file} at: {foundry_haskell_dir}')
         KEVM.kompile(
-            foundry_definition_dir,
+            foundry_haskell_dir,
             KompileBackend.HASKELL,
             foundry_main_file,
             emit_json=True,
@@ -394,7 +396,7 @@ def exec_foundry_prove(
         raise ValueError(f'Must have at least one worker, found: --workers {workers}')
     if max_iterations is not None and max_iterations < 0:
         raise ValueError(f'Must have a non-negative number of iterations, found: --max-iterations {max_iterations}')
-    definition_dir = foundry_out / 'kompiled'
+    definition_dir = foundry_out / 'kompiled' / 'haskell'
     use_directory = foundry_out / 'specs'
     use_directory.mkdir(parents=True, exist_ok=True)
     kcfgs_dir = foundry_out / 'kcfgs'
