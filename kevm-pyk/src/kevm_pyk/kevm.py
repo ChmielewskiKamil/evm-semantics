@@ -9,7 +9,7 @@ from typing import Any, Callable, Dict, Final, Iterable, List, Optional, Tuple
 from pyk.cli_utils import run_process
 from pyk.cterm import CTerm
 from pyk.kast import KApply, KAst, KInner, KLabel, KSequence, KSort, KToken, KVariable, Subst, build_assoc
-from pyk.kastManip import flatten_label, get_cell, split_config_from
+from pyk.kastManip import flatten_label, get_cell, minimize_term, set_cell, split_config_from
 from pyk.ktool import KProve, KRun
 from pyk.ktool.kompile import KompileBackend
 from pyk.ktool.kprint import paren
@@ -156,6 +156,31 @@ class KEVM(KProve, KRun):
 
         return None
 
+    def simplify(self, cterm: CTerm) -> CTerm:
+        config, *constraints = cterm
+        _, subst = split_config_from(config)
+
+        # <k> #next [ #dasmOpCode(PROGRAM [ PC ], SCHED) ] ~> REST </k>
+        k_cell = subst['K_CELL']
+        byte_lookup_pattern = KApply('_[_]_BYTES-HOOKED_Int_Bytes_Int', [KVariable('PROGRAM'), KVariable('PC')])
+        k_cell_pattern = KSequence(
+            [
+                KEVM.next_op(
+                    KApply('#dasmOpCode(_,_)_EVM_OpCode_Int_Schedule', [byte_lookup_pattern, KVariable('SCHED')])
+                ),
+                KVariable('REST'),
+            ]
+        )
+        if k_cell_match := k_cell_pattern.match(k_cell):
+            opcode_info = self.opcode_lookup(k_cell_match['PROGRAM'], k_cell_match['PC'], k_cell_match['SCHED'])
+            if opcode_info:
+                op, pc = opcode_info
+                new_kcell = KSequence([KEVM.next_op(op), k_cell_match['REST']])
+                new_config = set_cell(config, 'K_CELL', new_kcell)
+                return CTerm(mlAnd([new_config] + constraints))
+
+        return cterm
+
     def rewrite_step(self, cterm: CTerm) -> Optional[CTerm]:
         _, _cterm_subst = split_config_from(cterm.config)
         next_cterms: List[CTerm] = []
@@ -170,8 +195,12 @@ class KEVM(KProve, KRun):
                 _subst, constraint = rule_match
                 subst = Subst(_subst)
                 next_cterm = CTerm(subst(mlAnd([rhs.config] + list(lhs.constraints) + list(rhs.constraints))))
+                next_cterm = self.simplify(next_cterm)
                 next_cterms.append(next_cterm)
         _LOGGER.info(f'Number of next states: {len(next_cterms)}')
+        _LOGGER.info(
+            f'Next states: {[self.pretty_print(minimize_term(get_cell(x.kast, "K_CELL"))) for x in next_cterms]}'
+        )
         if len(next_cterms) == 1:
             return next_cterms[0]
         return None
