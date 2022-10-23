@@ -9,7 +9,7 @@ from typing import Any, Callable, Dict, Final, Iterable, List, Optional, Tuple
 from pyk.cli_utils import run_process
 from pyk.cterm import CTerm
 from pyk.kast import KApply, KAst, KInner, KLabel, KSequence, KSort, KToken, KVariable, Subst, build_assoc
-from pyk.kastManip import flatten_label, get_cell, minimize_term, set_cell, split_config_from
+from pyk.kastManip import flatten_label, get_cell, set_cell, split_config_from
 from pyk.ktool import KProve, KRun
 from pyk.ktool.kompile import KompileBackend
 from pyk.ktool.kprint import paren
@@ -208,9 +208,10 @@ class KEVM(KProve, KRun):
                 if next_cterm_simplified := self.simplify(next_cterm):
                     next_cterms.append(next_cterm_simplified)
         _LOGGER.info(f'Number of next states: {len(next_cterms)}')
-        _LOGGER.info(
-            f'Next states: {[self.pretty_print(minimize_term(get_cell(x.kast, "K_CELL"))) for x in next_cterms]}'
-        )
+        if len(next_cterms) > 1:
+            for nc in next_cterms:
+                next_k = get_cell(nc.config, 'K_CELL')
+                _LOGGER.info(f'Next state: {self.pretty_print(mlAnd([next_k] + list(nc.constraints)))}')
         if len(next_cterms) == 1:
             return next_cterms[0]
         return None
