@@ -156,7 +156,7 @@ class KEVM(KProve, KRun):
 
         return None
 
-    def simplify(self, cterm: CTerm) -> CTerm:
+    def simplify(self, cterm: CTerm) -> Optional[CTerm]:
         config, *constraints = cterm
         _, subst = split_config_from(config)
 
@@ -179,6 +179,16 @@ class KEVM(KProve, KRun):
                 new_config = set_cell(config, 'K_CELL', new_kcell)
                 return CTerm(mlAnd([new_config] + constraints))
 
+        # PC >=Int #sizeByteArray(PROGRAM)
+        constraint_pattern = mlEqualsTrue(
+            KApply('_>=Int_', [KVariable('PC'), KEVM.size_bytearray(KVariable('PROGRAM'))])
+        )
+        sched_cell = subst['SCHEDULE_CELL']
+        if len(constraints) > 0:
+            if constraint_match := constraint_pattern.match(constraints[-1]):
+                if self.opcode_lookup(constraint_match['PROGRAM'], constraint_match['PC'], sched_cell):
+                    return None
+
         return cterm
 
     def rewrite_step(self, cterm: CTerm) -> Optional[CTerm]:
@@ -195,8 +205,8 @@ class KEVM(KProve, KRun):
                 _subst, constraint = rule_match
                 subst = Subst(_subst)
                 next_cterm = CTerm(subst(mlAnd([rhs.config] + list(lhs.constraints) + list(rhs.constraints))))
-                next_cterm = self.simplify(next_cterm)
-                next_cterms.append(next_cterm)
+                if next_cterm_simplified := self.simplify(next_cterm):
+                    next_cterms.append(next_cterm_simplified)
         _LOGGER.info(f'Number of next states: {len(next_cterms)}')
         _LOGGER.info(
             f'Next states: {[self.pretty_print(minimize_term(get_cell(x.kast, "K_CELL"))) for x in next_cterms]}'
