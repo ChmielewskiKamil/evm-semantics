@@ -215,11 +215,11 @@ class KEVM(KProve, KRun):
         return CTerm(mlAnd([config] + constraints))
 
     def rewrite_step(self, cterm: CTerm) -> Optional[CTerm]:
-        _, _cterm_subst = split_config_from(cterm.config)
-        next_cterms: List[CTerm] = []
+        next_cterms: List[Tuple[int, CTerm]] = []
         rules = self.rule_index(cterm)
         _LOGGER.info(f'Rules found for index: {len(rules)}')
-        for _, lhs, rhs in rules:
+        min_priority = 200
+        for priority, lhs, rhs in rules:
             # TODO: needs to be unify_with_constraint instead
             # TODO: or needs to have routine "does not unify" for other rules
             rule_match = lhs.match_with_constraint(cterm)
@@ -229,14 +229,19 @@ class KEVM(KProve, KRun):
                 subst = Subst(_subst)
                 next_cterm = CTerm(subst(mlAnd([rhs.config] + list(lhs.constraints) + list(rhs.constraints))))
                 if next_cterm_simplified := self.simplify(next_cterm):
-                    next_cterms.append(next_cterm_simplified)
-        _LOGGER.info(f'Number of next states: {len(next_cterms)}')
-        if len(next_cterms) > 1:
-            for nc in next_cterms:
+                    next_cterms.append((priority, next_cterm_simplified))
+                    if priority < min_priority:
+                        min_priority = priority
+        highest_priority = [ct for p, ct in next_cterms if p == min_priority]
+        if len(highest_priority) < len(next_cterms):
+            _LOGGER.warning(f'Discarding {len(next_cterms) - len(highest_priority)} lower priority states.')
+        _LOGGER.info(f'Number of next states: {len(highest_priority)}')
+        if len(highest_priority) > 1:
+            for nc in highest_priority:
                 next_k = get_cell(nc.config, 'K_CELL')
                 _LOGGER.info(f'Next state: {self.pretty_print(mlAnd([next_k] + list(nc.constraints)))}')
-        if len(next_cterms) == 1:
-            return next_cterms[0]
+        if len(highest_priority) == 1:
+            return highest_priority[0]
         return None
 
     def get_basic_block_fast(self, init_cterm: CTerm) -> Tuple[int, CTerm]:
