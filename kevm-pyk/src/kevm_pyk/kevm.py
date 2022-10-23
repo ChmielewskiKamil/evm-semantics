@@ -47,7 +47,7 @@ class KEVM(KProve, KRun):
         KRun.__init__(self, definition_dir, use_directory=use_directory, profile=profile)
         KEVM._patch_symbol_table(self.symbol_table)
         self._crewrites = None
-        self._crewrites_file = definition_dir / 'crewrites.json'
+        self._crewrites_file = self.definition_dir / 'crewrites.json'
         self._rule_index = None
         self._opcode_lookup = {}
 
