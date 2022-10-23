@@ -6,8 +6,8 @@ from typing import Any, Callable, Dict, Final, Iterable, List, Optional, Tuple
 
 from pyk.cli_utils import run_process
 from pyk.cterm import CTerm
-from pyk.kast import KApply, KInner, KLabel, KRule, KSequence, KSort, KToken, KVariable, Subst, build_assoc
-from pyk.kastManip import bool_to_ml_pred, extract_lhs, extract_rhs, flatten_label, get_cell
+from pyk.kast import KApply, KInner, KLabel, KSequence, KSort, KToken, KVariable, Subst, build_assoc
+from pyk.kastManip import flatten_label, get_cell, split_config_from
 from pyk.ktool import KProve, KRun
 from pyk.ktool.kompile import KompileBackend
 from pyk.ktool.kprint import paren
@@ -17,7 +17,7 @@ from pyk.prelude.ml import mlAnd, mlEqualsTrue
 from pyk.prelude.string import stringToken
 from pyk.utils import unique
 
-from .utils import KDefinition__semantic_rules, add_include_arg
+from .utils import KDefinition__crewrites, add_include_arg, check_implication
 
 _LOGGER: Final = logging.getLogger(__name__)
 
@@ -26,8 +26,8 @@ _LOGGER: Final = logging.getLogger(__name__)
 
 
 class KEVM(KProve, KRun):
-    semantic_rules: List[KRule]
-    _rule_index: Optional[Callable[[CTerm], List[KRule]]]
+    _crewrites: Optional[List[Tuple[CTerm, CTerm]]]
+    _rule_index: Optional[Callable[[CTerm], List[Tuple[CTerm, CTerm]]]]
     _opcode_lookup: Dict[KInner, Dict[KInner, Tuple[KInner, int]]]
 
     def __init__(
@@ -43,16 +43,23 @@ class KEVM(KProve, KRun):
         KProve.__init__(self, definition_dir, use_directory=use_directory, main_file=main_file, profile=profile)
         KRun.__init__(self, definition_dir, use_directory=use_directory, profile=profile)
         KEVM._patch_symbol_table(self.symbol_table)
-        self.semantic_rules = KDefinition__semantic_rules(self.definition)
+        self._crewrites = None
         self._rule_index = None
         self._opcode_lookup = {}
 
     @property
-    def rule_index(self) -> Callable[[CTerm], List[KRule]]:
+    def crewrites(self) -> List[Tuple[CTerm, CTerm]]:
+        if not self._crewrites:
+            _LOGGER.info('Computing crewrites.')
+            self._crewrites = [(lhs, rhs) for _, lhs, rhs in KDefinition__crewrites(self.definition)]
+        return self._crewrites
+
+    @property
+    def rule_index(self) -> Callable[[CTerm], List[Tuple[CTerm, CTerm]]]:
         if not self._rule_index:
 
-            def __rule_index(_cterm: CTerm) -> List[KRule]:
-                return self.semantic_rules
+            def __rule_index(_cterm: CTerm) -> List[Tuple[CTerm, CTerm]]:
+                return self.crewrites
 
             self._rule_index = __rule_index
         return self._rule_index
@@ -91,7 +98,6 @@ class KEVM(KProve, KRun):
                 k_cell = k_cell.items[0]
             if type(k_cell) is KApply and k_cell.label.name == 'dasm_result__FOUNDRY_EthereumSimulation_Map':
                 self._opcode_lookup[program] = KEVM.opcode_map_to_dict(k_cell.args[0])
-            _LOGGER.info(f'result: {self._opcode_lookup[program]}')
 
         if program in self._opcode_lookup and pcount in self._opcode_lookup[program]:
             return self._opcode_lookup[program][pcount]
@@ -99,19 +105,35 @@ class KEVM(KProve, KRun):
         return None
 
     def rewrite_step(self, cterm: CTerm) -> Optional[CTerm]:
+        _, _cterm_subst = split_config_from(cterm.config)
         next_cterms: List[CTerm] = []
         rules = self.rule_index(cterm)
-        for r in rules:
-            rule_lhs = CTerm(mlAnd([extract_lhs(r.body), bool_to_ml_pred(r.requires)]))
+        _LOGGER.info(f'Rules found for index: {len(rules)}')
+        for lhs, rhs in rules:
+            k_cell = _cterm_subst['K_CELL']
+            rule_k_cell = get_cell(lhs.config, 'K_CELL')
             # TODO: needs to be unify_with_constraint instead
-            rule_match = rule_lhs.match_with_constraint(cterm)
+            match = lhs.config.match(cterm.config)
+            rule_match = lhs.match_with_constraint(cterm)
+            if type(rule_k_cell) is KSequence and type(rule_k_cell.items[0]) is KApply:
+                if type(k_cell) is KSequence and type(k_cell.items[0]) is KApply:
+                    if rule_k_cell.items[0].match(k_cell.items[0]):
+                        _, err = check_implication(self, cterm, lhs)
+                        _LOGGER.info(
+                            'Rule:\n'
+                            f'{self.pretty_print(k_cell)}\n'
+                            f'{self.pretty_print(rule_k_cell)}\n'
+                            f'{rule_match}\n'
+                            f'{match}\n'
+                            f'{err}\n'
+                        )
             if rule_match:
                 # TODO: CTerm.match_with_constraint should return a Subst
                 _subst, constraint = rule_match
                 subst = Subst(_subst)
-                next_cterm = CTerm(subst(mlAnd([extract_rhs(r.body), bool_to_ml_pred(r.ensures)])))
-                next_cterm = next_cterm.add_constraint(constraint)
+                next_cterm = CTerm(subst(mlAnd([rhs.config] + list(lhs.constraints) + list(rhs.constraints))))
                 next_cterms.append(next_cterm)
+        _LOGGER.info(f'Number of next states: {len(next_cterms)}')
         if len(next_cterms) == 1:
             return next_cterms[0]
         return None
