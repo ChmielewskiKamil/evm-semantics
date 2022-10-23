@@ -15,7 +15,7 @@ from pyk.ktool.kompile import KompileBackend
 from pyk.ktool.kprint import paren
 from pyk.prelude.kbool import notBool
 from pyk.prelude.kint import intToken, ltInt
-from pyk.prelude.ml import mlAnd, mlEqualsTrue
+from pyk.prelude.ml import is_bottom, mlAnd, mlEqualsTrue, mlTop
 from pyk.prelude.string import stringToken
 from pyk.utils import unique
 
@@ -156,6 +156,18 @@ class KEVM(KProve, KRun):
 
         return None
 
+    def simplify_constraint(self, constraint: KInner) -> KInner:
+
+        # { true #Equals _V1 <=Int #gas(_V2) }
+        inf_gas_pattern = mlEqualsTrue(KApply('_<=Int_', [KVariable('_V1'), KEVM.inf_gas(KVariable('_V2'))]))
+        _LOGGER.info(f'inf_gas_pattern: {inf_gas_pattern}')
+        _LOGGER.info(f'constraint: {constraint}')
+        if inf_gas_pattern.match(constraint):
+            _LOGGER.info('marker1')
+            return mlTop()
+
+        return constraint
+
     def simplify(self, cterm: CTerm) -> Optional[CTerm]:
         config, *constraints = cterm
         _, subst = split_config_from(config)
@@ -189,7 +201,11 @@ class KEVM(KProve, KRun):
                 if self.opcode_lookup(constraint_match['PROGRAM'], constraint_match['PC'], sched_cell):
                     return None
 
-        return cterm
+        constraints = [self.simplify_constraint(c) for c in constraints]
+        if any(map(is_bottom, constraints)):
+            return None
+
+        return CTerm(mlAnd([config] + constraints))
 
     def rewrite_step(self, cterm: CTerm) -> Optional[CTerm]:
         _, _cterm_subst = split_config_from(cterm.config)
