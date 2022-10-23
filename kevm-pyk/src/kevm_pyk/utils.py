@@ -2,11 +2,13 @@ from logging import Logger
 from typing import Collection, Iterable, List, Optional, Tuple
 
 from pyk.cterm import CTerm
-from pyk.kast import KApply, KClaim, KDefinition, KFlatModule, KImport, KInner, KRewrite, KRule, KVariable
+from pyk.kast import KApply, KClaim, KDefinition, KFlatModule, KImport, KInner, KNonTerminal, KRewrite, KRule, KVariable
 from pyk.kastManip import (
     abstract_term_safely,
     bool_to_ml_pred,
     bottom_up,
+    extract_lhs,
+    extract_rhs,
     flatten_label,
     free_vars,
     is_anon_var,
@@ -21,6 +23,43 @@ from pyk.kcfg import KCFG
 from pyk.ktool import KPrint, KProve
 from pyk.prelude.kbool import FALSE
 from pyk.prelude.ml import mlAnd
+
+
+def instantiate_cell_vars(definition: KDefinition, term: KInner) -> KInner:
+    def _cell_vars_to_labels(_kast: KInner) -> KInner:
+        if type(_kast) is KApply and _kast.is_cell:
+            production = definition.production_for_klabel(_kast.label)
+            production_arity = [prod_item.sort for prod_item in production.items if type(prod_item) is KNonTerminal]
+            new_args = []
+            for sort, arg in zip(production_arity, _kast.args):
+                if sort.name.endswith('Cell') and type(arg) is KVariable:
+                    new_args.append(definition.empty_config(sort))
+                else:
+                    new_args.append(arg)
+            return KApply(_kast.label, new_args)
+        return _kast
+
+    return bottom_up(_cell_vars_to_labels, term)
+
+
+def KDefinition__crewrites(defn: KDefinition) -> List[Tuple[int, CTerm, CTerm]]:  # noqa: N802
+    rules = KDefinition__semantic_rules(defn)
+    crewrites = []
+    for rule in rules:
+        rule_body = instantiate_cell_vars(defn, rule.body)
+        # TODO: We have to use remove_generated_cells because KCFG.create_node does so.
+        rule_lhs = remove_generated_cells(extract_lhs(rule_body))
+        rule_rhs = remove_generated_cells(extract_rhs(rule_body))
+        priority = 50
+        if 'priority' in rule.att:
+            priority = int(rule.att['priority'])
+        crewrite = (
+            priority,
+            CTerm(mlAnd([rule_lhs, bool_to_ml_pred(rule.requires)])),
+            CTerm(mlAnd([rule_rhs, bool_to_ml_pred(rule.ensures)])),
+        )
+        crewrites.append(crewrite)
+    return crewrites
 
 
 # TODO: Needs to be reviewed for accuracy
