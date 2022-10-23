@@ -15,7 +15,7 @@ from pyk.ktool.kompile import KompileBackend
 from pyk.ktool.kprint import paren
 from pyk.prelude.kbool import notBool
 from pyk.prelude.kint import intToken, ltInt
-from pyk.prelude.ml import is_bottom, mlAnd, mlEqualsTrue, mlTop
+from pyk.prelude.ml import is_bottom, mlAnd, mlBottom, mlEqualsTrue, mlTop
 from pyk.prelude.string import stringToken
 from pyk.utils import unique
 
@@ -160,11 +160,18 @@ class KEVM(KProve, KRun):
 
         # { true #Equals _V1 <=Int #gas(_V2) }
         inf_gas_pattern = mlEqualsTrue(KApply('_<=Int_', [KVariable('_V1'), KEVM.inf_gas(KVariable('_V2'))]))
-        _LOGGER.info(f'inf_gas_pattern: {inf_gas_pattern}')
-        _LOGGER.info(f'constraint: {constraint}')
         if inf_gas_pattern.match(constraint):
-            _LOGGER.info('marker1')
             return mlTop()
+
+        # { true #Equals #sizeWordStack(WS) <=Int 1024 }
+        word_stack_size_pattern = mlEqualsTrue(
+            KApply('_<=Int_', [KApply('#sizeWordStack(_)_EVM-TYPES_Int_WordStack', [KVariable('WS')]), intToken(1024)])
+        )
+        if ws_match := word_stack_size_pattern.match(constraint):
+            wsitems = flatten_label('_:__EVM-TYPES_WordStack_Int_WordStack', ws_match['WS'])
+            if len(wsitems) > 0 and wsitems[-1] == KApply('.WordStack_EVM-TYPES_WordStack'):
+                ws_len = len(wsitems) - 1
+                return mlTop() if ws_len <= 1024 else mlBottom()
 
         return constraint
 
