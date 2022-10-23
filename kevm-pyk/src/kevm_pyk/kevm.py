@@ -1,3 +1,4 @@
+import json
 import logging
 import sys
 from pathlib import Path
@@ -6,7 +7,7 @@ from typing import Any, Callable, Dict, Final, Iterable, List, Optional, Tuple
 
 from pyk.cli_utils import run_process
 from pyk.cterm import CTerm
-from pyk.kast import KApply, KInner, KLabel, KSequence, KSort, KToken, KVariable, Subst, build_assoc
+from pyk.kast import KApply, KAst, KInner, KLabel, KSequence, KSort, KToken, KVariable, Subst, build_assoc
 from pyk.kastManip import flatten_label, get_cell, split_config_from
 from pyk.ktool import KProve, KRun
 from pyk.ktool.kompile import KompileBackend
@@ -26,7 +27,8 @@ _LOGGER: Final = logging.getLogger(__name__)
 
 
 class KEVM(KProve, KRun):
-    _crewrites: Optional[List[Tuple[CTerm, CTerm]]]
+    _crewrites: Optional[List[Tuple[int, CTerm, CTerm]]]
+    _crewrites_file: Path
     _rule_index: Optional[Callable[[CTerm], List[Tuple[CTerm, CTerm]]]]
     _opcode_lookup: Dict[KInner, Dict[KInner, Tuple[KInner, int]]]
 
@@ -44,15 +46,37 @@ class KEVM(KProve, KRun):
         KRun.__init__(self, definition_dir, use_directory=use_directory, profile=profile)
         KEVM._patch_symbol_table(self.symbol_table)
         self._crewrites = None
+        self._crewrites_file = definition_dir / 'crewrites.json'
         self._rule_index = None
         self._opcode_lookup = {}
 
     @property
     def crewrites(self) -> List[Tuple[CTerm, CTerm]]:
         if not self._crewrites:
-            _LOGGER.info('Computing crewrites.')
-            self._crewrites = [(lhs, rhs) for _, lhs, rhs in KDefinition__crewrites(self.definition)]
-        return self._crewrites
+            if self._crewrites_file.exists():
+                _crewrites: List[Tuple[int, CTerm, CTerm]] = []
+                with open(self._crewrites_file, 'r') as crf:
+                    for cr in json.loads(crf.read()):
+                        pri, lhs_json, rhs_json = cr
+                        lhs_kast = KAst.from_dict(lhs_json)
+                        rhs_kast = KAst.from_dict(rhs_json)
+                        assert type(pri) is int
+                        assert isinstance(lhs_kast, KInner)
+                        assert isinstance(rhs_kast, KInner)
+                        _crewrites.append((pri, CTerm(lhs_kast), CTerm(rhs_kast)))
+                self._crewrites = _crewrites
+                _LOGGER.info(f'Loaded crewrites: {self._crewrites_file}')
+            else:
+                _LOGGER.info('Computing crewrites.')
+                self._crewrites = KDefinition__crewrites(self.definition)
+                with open(self._crewrites_file, 'w') as crf:
+                    json_crewrites = []
+                    for pri, lhs, rhs in self._crewrites:
+                        json_crewrite = [pri, lhs.kast.to_dict(), rhs.kast.to_dict()]
+                        json_crewrites.append(json_crewrite)
+                    crf.write(json.dumps(json_crewrites))
+                    _LOGGER.info(f'Recorded crewrites: {self._crewrites_file}')
+        return [(lhs, rhs) for _, lhs, rhs in self._crewrites]
 
     @property
     def rule_index(self) -> Callable[[CTerm], List[Tuple[CTerm, CTerm]]]:
