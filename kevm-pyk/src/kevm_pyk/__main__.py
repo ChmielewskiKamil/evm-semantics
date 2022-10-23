@@ -342,6 +342,11 @@ def exec_foundry_prove(
 
     lemma_rules = [KRule(KToken(lr, 'K'), att=KAtt({'simplification': ''})) for lr in lemmas]
 
+    def _write_cfg(_cfg: KCFG, _cfgpath: Path) -> None:
+        with open(_cfgpath, 'w') as cfgfile:
+            cfgfile.write(json.dumps(_cfg.to_dict()))
+            _LOGGER.info(f'Updated CFG file: {_cfgpath}')
+
     def prove_it(id_and_cfg: Tuple[str, Tuple[KCFG, Path]]) -> bool:
         cfgid, (cfg, cfgpath) = id_and_cfg
         target_node = cfg.get_unique_target()
@@ -396,10 +401,7 @@ def exec_foundry_prove(
                     _LOGGER.info(f'Made split: {shorten_hashes((next_node.id, branch_node.id))}')
                     # cfg.create_cover(branch_node.id, next_node.id)
                     # _LOGGER.info(f'Made cover: {shorten_hashes((branch_node.id, next_node.id))}')
-
-            with open(cfgpath, 'w') as cfgfile:
-                cfgfile.write(json.dumps(cfg.to_dict()))
-                _LOGGER.info(f'Updated CFG file: {cfgpath}')
+            _write_cfg(cfg, cfgpath)
 
         if failure_nodes:
             _LOGGER.error(f'Failure nodes: {shorten_hashes(failure_nodes)}')
