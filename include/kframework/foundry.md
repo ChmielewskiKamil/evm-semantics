@@ -84,6 +84,22 @@ module FOUNDRY
     imports EDSL
     imports LEMMAS
 
+    syntax OpCodeResult ::= opcode( OpCode , Int )
+ // ----------------------------------------------
+
+    syntax EthereumSimulation ::= "dasm_program" ByteArray Schedule
+                                | "dasm_result" Map
+ // -----------------------------------------------
+    rule <k> dasm_program PGM SCHED => dasm_result dasmOpCodes(PGM, SCHED, 0, .Map) </k> <exit-code> 1 => 0 </exit-code>
+
+    syntax Map ::= dasmOpCodes( ByteArray , Schedule , Int , Map ) [function]
+ // -------------------------------------------------------------------------
+    rule dasmOpCodes(_PGM, _SCHED, _PCOUNT, RES) => RES [owise]
+    rule dasmOpCodes(PGM, SCHED, PCOUNT, RES)
+      => #let OPCODE = #dasmOpCode(PGM [ PCOUNT ], SCHED)
+          #in dasmOpCodes(PGM, SCHED, PCOUNT +Int #widthOp(OPCODE), RES [ PCOUNT <- opcode(OPCODE, #widthOp(OPCODE)) ])
+      requires PCOUNT <Int #sizeByteArray(PGM)
+
     configuration
       <foundry>
         <kevm/>
