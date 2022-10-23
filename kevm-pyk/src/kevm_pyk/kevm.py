@@ -113,6 +113,7 @@ class KEVM(KProve, KRun):
             k_cell = _cterm_subst['K_CELL']
             rule_k_cell = get_cell(lhs.config, 'K_CELL')
             # TODO: needs to be unify_with_constraint instead
+            # TODO: or needs to have routine "does not unify" for other rules
             match = lhs.config.match(cterm.config)
             rule_match = lhs.match_with_constraint(cterm)
             if type(rule_k_cell) is KSequence and type(rule_k_cell.items[0]) is KApply:
