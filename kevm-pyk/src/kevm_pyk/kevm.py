@@ -363,7 +363,7 @@ class KEVM(KProve, KRun):
     def rewrite_step(self, cterm: CTerm) -> Optional[CTerm]:
         next_cterms: List[Tuple[int, CTerm]] = []
         rules = self.indexed_rules(cterm)
-        min_priority = 200
+        min_priority = 500
         for priority, lhs, rhs in rules:
             # TODO: needs to be unify_with_constraint instead
             # TODO: or needs to have routine "does not unify" for other rules
