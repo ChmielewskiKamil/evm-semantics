@@ -468,13 +468,16 @@ class KEVM(KProve, KRun):
         return CTerm(mlAnd([Subst(subst)(empty_config)] + constraints))
 
     def rewrite_step(self, cterm: CTerm) -> Optional[CTerm]:
+        new_cterm = self.simplify(cterm)
+        if new_cterm is None:
+            return None
         next_cterms: List[Tuple[int, CTerm]] = []
-        rules = self.indexed_rules(cterm)
+        rules = self.indexed_rules(new_cterm)
         min_priority = 500
         for priority, lhs, rhs in rules:
             # TODO: needs to be unify_with_constraint instead
             # TODO: or needs to have routine "does not unify" for other rules
-            rule_match = lhs.match_with_constraint(cterm)
+            rule_match = lhs.match_with_constraint(new_cterm)
             if rule_match:
                 # TODO: CTerm.match_with_constraint should return a Subst
                 _subst, constraint = rule_match
