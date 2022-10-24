@@ -365,6 +365,32 @@ class KEVM(KProve, KRun):
         if nump_match := not_uses_memory_pattern.match(constraint):
             return mlTop() if not KEVM.uses_memory(nump_match['OP']) else mlBottom()
 
+        # { true #Equals I in S }
+        # { true #Equals notBool I in S }
+        set_access_pattern = KApply('Set:in', [KVariable('I'), KVariable('S')])
+        set_present_pattern = mlEqualsTrue(set_access_pattern)
+        if spp_match := set_present_pattern.match(constraint):
+            if (
+                type(spp_match['I']) is KToken
+                and type(spp_match['S']) is KApply
+                and spp_match['S'].label.name == '_Set_'
+            ):
+                i = spp_match['I']
+                s = [si.args[0] for si in flatten_label('_Set_', spp_match['S']) if type(si) is KApply and si.arity > 0]
+                if i in s:
+                    return mlTop()
+        set_absent_pattern = mlEqualsTrue(notBool(set_access_pattern))
+        if spp_match := set_absent_pattern.match(constraint):
+            if (
+                type(spp_match['I']) is KToken
+                and type(spp_match['S']) is KApply
+                and spp_match['S'].label.name == '_Set_'
+            ):
+                i = spp_match['I']
+                s = [si.args[0] for si in flatten_label('_Set_', spp_match['S']) if type(si) is KApply and si.arity > 0]
+                if i in s:
+                    return mlBottom()
+
         return constraint
 
     def init_state(self, cterm: CTerm) -> None:
