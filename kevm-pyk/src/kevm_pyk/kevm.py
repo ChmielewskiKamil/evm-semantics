@@ -701,9 +701,7 @@ class KEVM(KProve, KRun):
 
     @staticmethod
     def stack_needed(op: KInner) -> Optional[int]:
-        _LOGGER.info(f'op: {op}')
         if type(op) is KApply:
-            _LOGGER.info(f'op.label: {op.label}')
             if op.label.name == 'PUSH(_)_EVM_PushOp_Int':
                 return 0
             if op.label.name.endswith('NullStackOp'):
@@ -717,6 +715,20 @@ class KEVM(KProve, KRun):
             if op.label.name.endswith('QuadStackOp'):
                 return 4
         return None
+
+    @staticmethod
+    def is_addr_op(op: KInner) -> bool:
+        return type(op) is KApply and op.label.name in {
+            'BALANCE_EVM_UnStackOp',
+            'SELFDESTRUCT_EVM_UnStackOp',
+            'EXTCODEHASH_EVM_UnStackOp',
+            'EXTCODESIZE_EVM_UnStackOp',
+            'EXTCODECOPY_EVM_QuadStackOp',
+            'CALLCODE_EVM_CallOp',
+            'CALL_EVM_CallOp',
+            'DELEGATECALL_EVM_CallSixOp',
+            'STATICCALL_EVM_CallSixOp',
+        }
 
 
 class Foundry(KEVM):
