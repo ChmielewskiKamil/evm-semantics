@@ -196,7 +196,11 @@ class KEVM(KProve, KRun):
             return mlBottom()
 
         # { true #Equals ( notBool ( false andBool _ ) ) }
+        # { true #Equals notBool ( false ) }
         trivial_pattern = mlEqualsTrue(notBool(andBool([FALSE, KVariable('_')])))
+        if trivial_pattern.match(constraint):
+            return mlTop()
+        trivial_pattern = mlEqualsTrue(notBool(FALSE))
         if trivial_pattern.match(constraint):
             return mlTop()
 
