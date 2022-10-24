@@ -82,8 +82,9 @@ class KEVM(KProve, KRun):
         return self._crewrites
 
     def compute_rule_index(self) -> None:
-        _LOGGER.info('Computing rule index.')
         self._rule_index = {}
+        self.crewrites
+        _LOGGER.info('Computing rule index.')
         for priority, lhs, rhs in self.crewrites:
             index = KEVM.rule_index(lhs)
             if index is not None:
@@ -94,7 +95,7 @@ class KEVM(KProve, KRun):
     @staticmethod
     def rule_index(cterm: CTerm) -> Optional[str]:
         k_cell = get_cell(cterm.config, 'K_CELL')
-        if type(k_cell) is KSequence and len(k_cell.items) > 0 and type(k_cell.items[0]) is KApply:
+        if type(k_cell) is KSequence and k_cell.arity > 0 and type(k_cell.items[0]) is KApply:
             return k_cell.items[0].label.name
         return None
 
@@ -164,7 +165,7 @@ class KEVM(KProve, KRun):
                 ]
                 result = self.run(lookup_evm_pgm, args=run_args)
                 k_cell = get_cell(result.config, 'K_CELL')
-                if type(k_cell) is KSequence and len(k_cell.items) > 0:
+                if type(k_cell) is KSequence and k_cell.arity > 0:
                     k_cell = k_cell.items[0]
                 if type(k_cell) is KApply and k_cell.label.name == 'dasm_result__FOUNDRY_EthereumSimulation_Map':
                     self._opcode_lookup[(program, schedule)] = KEVM.opcode_map_to_dict(k_cell.args[0])
