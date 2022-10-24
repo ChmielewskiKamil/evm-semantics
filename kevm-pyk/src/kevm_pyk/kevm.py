@@ -283,6 +283,33 @@ class KEVM(KProve, KRun):
                 new_kcell = KSequence([KEVM.next_op(op), k_cell_match['REST']])
                 config = set_cell(config, 'K_CELL', new_kcell)
 
+        # <k> #if isAddr1Op(OP) or isAddr2Op(OP) #then #addr [ OP ] #else . #fi ~> REST </k>
+        addr_check_pattern = KSequence(
+            [
+                KApply(
+                    '#if_#then_#else_#fi_K-EQUAL-SYNTAX_Sort_Bool_Sort_Sort',
+                    [
+                        orBool(
+                            [
+                                KApply('isAddr1Op(_)_EVM_Bool_OpCode', [KVariable('OP')]),
+                                KApply('isAddr2Op(_)_EVM_Bool_OpCode', [KVariable('OP')]),
+                            ]
+                        ),
+                        KVariable('ADDR_OP'),
+                        KSequence([]),
+                    ],
+                ),
+                KVariable('REST'),
+            ]
+        )
+        if acp_match := addr_check_pattern.match(k_cell):
+            if KEVM.is_addr_op(acp_match['OP']):
+                new_k_cell = KSequence([acp_match['ADDR_OP'], acp_match['REST']])
+                config = set_cell(config, 'K_CELL', new_k_cell)
+            else:
+                new_k_cell = KSequence([acp_match['REST']])
+                config = set_cell(config, 'K_CELL', new_k_cell)
+
         return CTerm(mlAnd([config] + constraints))
 
     def rewrite_step(self, cterm: CTerm) -> Optional[CTerm]:
