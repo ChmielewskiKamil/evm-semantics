@@ -191,6 +191,27 @@ class KEVM(KProve, KRun):
 
         return None
 
+    def simplify_int(self, i: KInner) -> KInner:
+        if type(i) is KVariable or type(i) is KToken:
+            return i
+
+        i = simplify_int(i)
+
+        gas_pattern = KApply('_-Int_', [KEVM.inf_gas(KVariable('V1')), KVariable('V2')])
+        if gp_match := gas_pattern.match(i):
+            i = KEVM.inf_gas(KApply('_-Int_', [gp_match['V1'], gp_match['V2']]))
+
+        widthop_pattern = KApply('#widthOp(_)_EVM_Int_OpCode', [KVariable('OP')])
+        new_is: List[KInner] = []
+        for j in flatten_label('_+Int_', i):
+            if op_match := widthop_pattern.match(j):
+                new_is.append(intToken(KEVM.width_op(op_match['OP'])))
+            else:
+                new_is.append(j)
+        i = build_assoc(intToken(0), '_+Int_', new_is)
+
+        return i
+
     def simplify_constraint(self, constraint: KInner) -> KInner:
 
         if constraint == mlEqualsTrue(FALSE):
