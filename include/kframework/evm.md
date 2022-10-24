@@ -305,12 +305,7 @@ The `#next [_]` operator initiates execution by:
 ```k
     syntax InternalOp ::= "#next" "[" OpCode "]"
  // --------------------------------------------
-    rule <k> #next [ OP ]
-          => #if isAddr1Op(OP) orBool isAddr2Op(OP) #then #addr [ OP ] #else . #fi
-          ~> #exec [ OP ]
-          ~> #pc   [ OP ]
-         ...
-         </k>
+    rule <k> #next [ OP ] => #addr [ OP ] ~> #exec [ OP ] ~> #pc [ OP ] ... </k>
          <wordStack> WS </wordStack>
          <static> STATIC:Bool </static>
       requires notBool ( #stackUnderflow(WS, OP) orBool #stackOverflow(WS, OP) )
@@ -1846,13 +1841,7 @@ Overall Gas
 ```k
     syntax InternalOp ::= "#gas" "[" OpCode "," OpCode "]"
  // ------------------------------------------------------
-    rule <k> #gas [ OP , AOP ]
-          => #if #usesMemory(OP) #then #memory [ AOP ] #else .K #fi
-          ~> #gas [ AOP ]
-          ~> #if Ghasaccesslist << SCHED >> andBool #usesAccessList(OP) #then #access [ AOP ] #else .K #fi
-         ...
-        </k>
-        <schedule> SCHED </schedule>
+    rule <k> #gas [ OP , AOP ] => #memory [ AOP ] ~> #gas [ AOP ] ~> #access [ AOP ] ... </k>
 
     rule <k> #gas [ OP ] => #gasExec(SCHED, OP) ~> #deductGas ... </k>
          <schedule> SCHED </schedule>
@@ -1975,7 +1964,11 @@ Access List Gas
  // --------------------------------------------
     rule <k> #access [ OP ] => #gasAccess(SCHED, OP) ~> #deductGas ... </k>
          <schedule> SCHED </schedule>
+      requires Ghasaccesslist << SCHED >>
 
+    rule <k> #access [ OP ] => . ... </k>
+         <schedule> SCHED </schedule>
+      requires notBool Ghasaccesslist << SCHED >>
 
     syntax InternalOp ::= #gasAccess ( Schedule, OpCode )
  // -----------------------------------------------------
