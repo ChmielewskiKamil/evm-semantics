@@ -193,6 +193,8 @@ class KEVM(KProve, KRun):
         )
         if cbsp_match := concrete_bytearray_size_pattern.match(constraint):
             new_i = simplify_int(cbsp_match['V1'])
+            if self._current_schedule and self.opcode_lookup(cbsp_match['V2'], new_i, self._current_schedule):
+                return mlBottom()
             return mlEqualsTrue(KApply('_>=Int_', [new_i, KEVM.size_bytearray(cbsp_match['V2'])]))
 
         # { true #Equals V1 <Int #sizeByteArray(V2) }
@@ -201,6 +203,8 @@ class KEVM(KProve, KRun):
         )
         if cbsp_match := concrete_bytearray_size_pattern.match(constraint):
             new_i = simplify_int(cbsp_match['V1'])
+            if self._current_schedule and self.opcode_lookup(cbsp_match['V2'], new_i, self._current_schedule):
+                return mlTop()
             return mlEqualsTrue(KApply('_<Int_', [new_i, KEVM.size_bytearray(cbsp_match['V2'])]))
 
         return constraint
@@ -217,7 +221,6 @@ class KEVM(KProve, KRun):
         config, *constraints = cterm
         _, subst = split_config_from(config)
         k_cell = subst['K_CELL']
-        sched_cell = subst['SCHEDULE_CELL']
 
         # <k> #next [ #dasmOpCode(PROGRAM [ PC ], SCHED) ] ~> REST </k>
         byte_lookup_pattern = KApply('_[_]_BYTES-HOOKED_Int_Bytes_Int', [KVariable('PROGRAM'), KVariable('PC')])
@@ -238,21 +241,6 @@ class KEVM(KProve, KRun):
                 config = set_cell(config, 'K_CELL', new_kcell)
 
         constraints = [self.simplify_constraint(c) for c in constraints]
-
-        # { true #Equals V1 >=Int #sizeByteArray(V2) }
-        concrete_bytearray_size_pattern_1 = mlEqualsTrue(
-            KApply('_>=Int_', [KVariable('V1'), KEVM.size_bytearray(KVariable('V2'))])
-        )
-        # { true #Equals V1 <Int #sizeByteArray(V2) }
-        concrete_bytearray_size_pattern_2 = mlEqualsTrue(
-            KApply('_<Int_', [KVariable('V1'), KEVM.size_bytearray(KVariable('V2'))])
-        )
-        if cbsp_match := concrete_bytearray_size_pattern_1.match(constraints[-1]):
-            if self.opcode_lookup(cbsp_match['V2'], cbsp_match['V1'], sched_cell):
-                return None
-        elif cbsp_match := concrete_bytearray_size_pattern_2.match(constraints[-1]):
-            if self.opcode_lookup(cbsp_match['V2'], cbsp_match['V1'], sched_cell):
-                constraints = constraints[:-1]
 
         if any(map(is_bottom, constraints)):
             return None
