@@ -344,6 +344,7 @@ class KEVM(KProve, KRun):
         config, *constraints = cterm
         _, subst = split_config_from(config)
         k_cell = subst['K_CELL']
+        gas_cell = subst['GAS_CELL']
 
         # <k> #next [ #dasmOpCode(PROGRAM [ PC ], SCHED) ] ~> REST </k>
         byte_lookup_pattern = KApply('_[_]_BYTES-HOOKED_Int_Bytes_Int', [KVariable('PROGRAM'), KVariable('PC')])
@@ -360,8 +361,14 @@ class KEVM(KProve, KRun):
             opcode_info = self.opcode_lookup(k_cell_match['PROGRAM'], simplified_pc, k_cell_match['SCHED'])
             if opcode_info:
                 op, pc = opcode_info
-                new_kcell = KSequence([KEVM.next_op(op), k_cell_match['REST']])
-                config = set_cell(config, 'K_CELL', new_kcell)
+                new_k_cell = KSequence([KEVM.next_op(op), k_cell_match['REST']])
+                config = set_cell(config, 'K_CELL', new_k_cell)
+
+        # <gas> #gas(VGAS) -Int G </gas>
+        gas_pattern = KApply('_-Int_', [KEVM.inf_gas(KVariable('V1')), KVariable('V2')])
+        if gp_match := gas_pattern.match(gas_cell):
+            new_gas_cell = KEVM.inf_gas(KApply('_-Int_', [gp_match['V1'], gp_match['V2']]))
+            config = set_cell(config, 'GAS_CELL', new_gas_cell)
 
         return CTerm(mlAnd([config] + constraints))
 
