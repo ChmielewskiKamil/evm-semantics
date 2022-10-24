@@ -250,6 +250,30 @@ class KEVM(KProve, KRun):
                 return mlTop()
             return mlEqualsTrue(KApply('_<Int_', [new_i, KEVM.size_bytearray(cbsp_match['V2'])]))
 
+        # { true #Equals isAddr1Op(OP) }
+        # { true #Equals isAddr2Op(OP) }
+        # { true #Equals notBool (isAddr1Op(OP) orBool isAddr2Op(OP)) }
+        addr1_op_pattern = mlEqualsTrue(KApply('isAddr1Op(_)_EVM_Bool_OpCode', [KVariable('OP')]))
+        if aop_match := addr1_op_pattern.match(constraint):
+            return mlTop() if KEVM.is_addr1_op(aop_match['OP']) else mlBottom()
+        addr2_op_pattern = mlEqualsTrue(KApply('isAddr2Op(_)_EVM_Bool_OpCode', [KVariable('OP')]))
+        if aop_match := addr2_op_pattern.match(constraint):
+            return mlTop() if KEVM.is_addr2_op(aop_match['OP']) else mlBottom()
+        not_addr_op_pattern = mlEqualsTrue(
+            notBool(
+                orBool(
+                    [
+                        KApply('isAddr1Op(_)_EVM_Bool_OpCode', [KVariable('OP')]),
+                        KApply('isAddr2Op(_)_EVM_Bool_OpCode', [KVariable('OP')]),
+                    ]
+                )
+            )
+        )
+        if aop_match := not_addr_op_pattern.match(constraint):
+            return (
+                mlTop() if not (KEVM.is_addr1_op(aop_match['OP']) or KEVM.is_addr2_op(aop_match['OP'])) else mlBottom()
+            )
+
         return constraint
 
     def init_state(self, cterm: CTerm) -> None:
@@ -282,33 +306,6 @@ class KEVM(KProve, KRun):
                 op, pc = opcode_info
                 new_kcell = KSequence([KEVM.next_op(op), k_cell_match['REST']])
                 config = set_cell(config, 'K_CELL', new_kcell)
-
-        # <k> #if isAddr1Op(OP) or isAddr2Op(OP) #then #addr [ OP ] #else . #fi ~> REST </k>
-        addr_check_pattern = KSequence(
-            [
-                KApply(
-                    '#if_#then_#else_#fi_K-EQUAL-SYNTAX_Sort_Bool_Sort_Sort',
-                    [
-                        orBool(
-                            [
-                                KApply('isAddr1Op(_)_EVM_Bool_OpCode', [KVariable('OP')]),
-                                KApply('isAddr2Op(_)_EVM_Bool_OpCode', [KVariable('OP')]),
-                            ]
-                        ),
-                        KVariable('ADDR_OP'),
-                        KSequence([]),
-                    ],
-                ),
-                KVariable('REST'),
-            ]
-        )
-        if acp_match := addr_check_pattern.match(k_cell):
-            if KEVM.is_addr_op(acp_match['OP']):
-                new_k_cell = KSequence([acp_match['ADDR_OP'], acp_match['REST']])
-                config = set_cell(config, 'K_CELL', new_k_cell)
-            else:
-                new_k_cell = KSequence([acp_match['REST']])
-                config = set_cell(config, 'K_CELL', new_k_cell)
 
         return CTerm(mlAnd([config] + constraints))
 
@@ -744,13 +741,18 @@ class KEVM(KProve, KRun):
         return None
 
     @staticmethod
-    def is_addr_op(op: KInner) -> bool:
+    def is_addr1_op(op: KInner) -> bool:
         return type(op) is KApply and op.label.name in {
             'BALANCE_EVM_UnStackOp',
             'SELFDESTRUCT_EVM_UnStackOp',
             'EXTCODEHASH_EVM_UnStackOp',
             'EXTCODESIZE_EVM_UnStackOp',
             'EXTCODECOPY_EVM_QuadStackOp',
+        }
+
+    @staticmethod
+    def is_addr2_op(op: KInner) -> bool:
+        return type(op) is KApply and op.label.name in {
             'CALLCODE_EVM_CallOp',
             'CALL_EVM_CallOp',
             'DELEGATECALL_EVM_CallSixOp',
