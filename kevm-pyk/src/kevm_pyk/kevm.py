@@ -273,12 +273,12 @@ class KEVM(KProve, KRun):
         if len(highest_priority) < len(next_cterms):
             _LOGGER.warning(f'Discarding {len(next_cterms) - len(highest_priority)} lower priority states.')
         _LOGGER.info(f'Number of next states: {len(highest_priority)}')
-        if len(highest_priority) > 1:
+        if len(highest_priority) == 1:
+            return highest_priority[0]
+        elif len(highest_priority) > 1:
             for nc in highest_priority:
                 next_k = get_cell(nc.config, 'K_CELL')
                 _LOGGER.info(f'Next state: {self.pretty_print(mlAnd([next_k] + list(nc.constraints)))}')
-        if len(highest_priority) == 1:
-            return highest_priority[0]
         return None
 
     def get_basic_block_fast(self, init_cterm: CTerm) -> Tuple[int, CTerm]:
@@ -287,6 +287,11 @@ class KEVM(KProve, KRun):
         while next_cterm := self.rewrite_step(_curr_cterm):
             depth += 1
             _curr_cterm = next_cterm
+        _new_k_cell = get_cell(_curr_cterm.config, 'K_CELL')
+        _new_constraints = list(_curr_cterm.constraints)
+        _LOGGER.info(
+            f'Took {depth} steps with fast rewriter to get state: {self.pretty_print(mlAnd([_new_k_cell] + _new_constraints))}'
+        )
         return depth, _curr_cterm
 
     @staticmethod
