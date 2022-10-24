@@ -199,10 +199,18 @@ class KEVM(KProve, KRun):
         if trivial_pattern.match(constraint):
             return mlTop()
 
-        # { true #Equals _V1 <=Int #gas(_V2) }
-        inf_gas_pattern = mlEqualsTrue(KApply('_<=Int_', [KVariable('_V1'), KEVM.inf_gas(KVariable('_V2'))]))
-        if inf_gas_pattern.match(constraint):
+        # { true #Equals V1 <=Int #gas(V2) }
+        # { true #Equals #gas(V1) <Int V2 }
+        # { true #Equals #gas(V1) >=Int V2 }
+        inf_gas_pattern_1 = mlEqualsTrue(KApply('_<=Int_', [KVariable('V1'), KEVM.inf_gas(KVariable('V2'))]))
+        if inf_gas_pattern_1.match(constraint):
             return mlTop()
+        inf_gas_pattern_2 = mlEqualsTrue(KApply('_<Int_', [KEVM.inf_gas(KVariable('V1')), KVariable('V2')]))
+        if inf_gas_pattern_2.match(constraint):
+            return mlBottom()
+        inf_gas_pattern_3 = mlEqualsTrue(KApply('_>=Int_', [KEVM.inf_gas(KVariable('V1')), KVariable('V2')]))
+        if inf_gas_pattern_3.match(constraint):
+            return mlBottom()
 
         # { true #Equals #sizeWordStack(WS) <=Int 1024 }
         word_stack_size_pattern = mlEqualsTrue(
