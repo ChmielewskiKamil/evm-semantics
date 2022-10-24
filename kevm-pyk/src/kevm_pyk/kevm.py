@@ -421,10 +421,11 @@ class KEVM(KProve, KRun):
                                 subst['WORDSTACK_CELL'] = KEVM.wordstack(wordstack_items[n_items:-1])
                                 subst['K_CELL'] = KSequence([KEVM.gas_op(op, new_op), new_op, rest])
 
-        # <gas> #gas(VGAS) -Int G </gas>
-        gas_pattern = KApply('_-Int_', [KEVM.inf_gas(KVariable('V1')), KVariable('V2')])
-        if gp_match := gas_pattern.match(subst['GAS_CELL']):
-            subst['GAS_CELL'] = KEVM.inf_gas(KApply('_-Int_', [gp_match['V1'], gp_match['V2']]))
+        # <pc> PCOUNT </pc>
+        subst['PC_CELL'] = self.simplify_int(subst['PC_CELL'])
+
+        # <gas> GAS </gas>
+        subst['GAS_CELL'] = self.simplify_int(subst['GAS_CELL'])
 
         return CTerm(mlAnd([Subst(subst)(empty_config)] + constraints))
 
