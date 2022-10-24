@@ -391,6 +391,21 @@ class KEVM(KProve, KRun):
                 if i in s:
                     return mlBottom()
 
+        # { true #Equals X ==Int Y }
+        # { true #Equals X =/=Int Y }
+        equality_pattern = mlEqualsTrue(KApply('_==Int_', [KVariable('I1'), KVariable('I2')]))
+        disequality_pattern = mlEqualsTrue(KApply('_=/=Int_', [KVariable('I1'), KVariable('I2')]))
+        if ep_match := equality_pattern.match(constraint):
+            if type(ep_match['I1']) is KToken and type(ep_match['I2']) is KToken:
+                i1 = int(ep_match['I1'].token)
+                i2 = int(ep_match['I2'].token)
+                return mlTop() if i1 == i2 else mlBottom()
+        if dep_match := disequality_pattern.match(constraint):
+            if type(dep_match['I1']) is KToken and type(dep_match['I2']) is KToken:
+                i1 = int(dep_match['I1'].token)
+                i2 = int(dep_match['I2'].token)
+                return mlBottom() if i1 == i2 else mlTop()
+
         return constraint
 
     def init_state(self, cterm: CTerm) -> None:
