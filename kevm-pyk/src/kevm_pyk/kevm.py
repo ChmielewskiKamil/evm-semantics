@@ -13,7 +13,7 @@ from pyk.kastManip import flatten_label, get_cell, set_cell, split_config_from
 from pyk.ktool import KProve, KRun
 from pyk.ktool.kompile import KompileBackend
 from pyk.ktool.kprint import paren
-from pyk.prelude.kbool import notBool
+from pyk.prelude.kbool import FALSE, notBool
 from pyk.prelude.kint import intToken, ltInt
 from pyk.prelude.ml import is_bottom, mlAnd, mlBottom, mlEqualsTrue, mlTop
 from pyk.prelude.string import stringToken
@@ -171,6 +171,9 @@ class KEVM(KProve, KRun):
         return None
 
     def simplify_constraint(self, constraint: KInner) -> KInner:
+
+        if constraint == mlEqualsTrue(FALSE):
+            return mlBottom()
 
         # { true #Equals _V1 <=Int #gas(_V2) }
         inf_gas_pattern = mlEqualsTrue(KApply('_<=Int_', [KVariable('_V1'), KEVM.inf_gas(KVariable('_V2'))]))
