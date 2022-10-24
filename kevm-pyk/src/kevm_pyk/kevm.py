@@ -240,11 +240,6 @@ class KEVM(KProve, KRun):
                 new_kcell = KSequence([KEVM.next_op(op), k_cell_match['REST']])
                 config = set_cell(config, 'K_CELL', new_kcell)
 
-        constraints = [self.simplify_constraint(c) for c in constraints]
-
-        if any(map(is_bottom, constraints)):
-            return None
-
         return CTerm(mlAnd([config] + constraints))
 
     def rewrite_step(self, cterm: CTerm) -> Optional[CTerm]:
@@ -261,11 +256,16 @@ class KEVM(KProve, KRun):
                 # TODO: CTerm.match_with_constraint should return a Subst
                 _subst, constraint = rule_match
                 subst = Subst(_subst)
-                next_cterm = CTerm(subst(mlAnd([rhs.config] + list(lhs.constraints) + list(rhs.constraints))))
-                if next_cterm_simplified := self.simplify(next_cterm):
-                    next_cterms.append((priority, next_cterm_simplified))
-                    if priority < min_priority:
-                        min_priority = priority
+                new_config = subst(rhs.config)
+                new_constraints = [
+                    self.simplify_constraint(subst(c)) for c in list(lhs.constraints) + list(rhs.constraints)
+                ]
+                if not any(map(is_bottom, new_constraints)):
+                    next_cterm = self.simplify(CTerm(mlAnd([new_config] + new_constraints)))
+                    if next_cterm is not None:
+                        next_cterms.append((priority, next_cterm))
+                        if priority < min_priority:
+                            min_priority = priority
         highest_priority = [ct for p, ct in next_cterms if p == min_priority]
         if len(highest_priority) < len(next_cterms):
             _LOGGER.warning(f'Discarding {len(next_cterms) - len(highest_priority)} lower priority states.')
