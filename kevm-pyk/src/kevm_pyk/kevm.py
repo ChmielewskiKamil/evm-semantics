@@ -377,6 +377,29 @@ class KEVM(KProve, KRun):
                 nop, _ = opcode_info
                 subst['K_CELL'] = KSequence([KEVM.next_op(nop), k_cell_match['REST']])
 
+        # <k> #exec [ OP ] ~> REST </k> <wordStack> WS </wordStack>
+        k_pattern = KSequence([KApply('#exec[_]_EVM_InternalOp_OpCode', [KVariable('OP')]), KVariable('REST')])
+        wordstack_items = KEVM.wordstack_items(subst['WORDSTACK_CELL'])
+        if len(wordstack_items) > 0 and wordstack_items[-1] == KEVM.wordstack_empty():
+            if kp_match := k_pattern.match(subst['K_CELL']):
+                op = kp_match['OP']
+                rest = kp_match['REST']
+                if type(op) is KApply:
+                    if op.label.name.endswith('NullStackOp'):
+                        subst['K_CELL'] = KSequence([KEVM.gas_op(op, op), op, rest])
+                    else:
+                        opp_array = [
+                            ('UnStackOp', 1, '___EVM_InternalOp_UnStackOp_Int'),
+                            ('BinStackOp', 2, '____EVM_InternalOp_BinStackOp_Int_Int'),
+                            ('TernStackOp', 3, '____EVM_InternalOp_TernStackOp_Int_Int_Int'),
+                            ('QuadStackOp', 4, '____EVM_InternalOp_QuadStackOp_Int_Int_Int_Int'),
+                        ]
+                        for suffix, n_items, label in opp_array:
+                            if op.label.name.endswith(suffix) and len(wordstack_items) >= n_items:
+                                new_op = KApply(label, [op] + wordstack_items[0:n_items])
+                                subst['WORDSTACK_CELL'] = KEVM.wordstack(wordstack_items[n_items:-1])
+                                subst['K_CELL'] = KSequence([KEVM.gas_op(op, new_op), new_op, rest])
+
         # <gas> #gas(VGAS) -Int G </gas>
         gas_pattern = KApply('_-Int_', [KEVM.inf_gas(KVariable('V1')), KVariable('V2')])
         if gp_match := gas_pattern.match(subst['GAS_CELL']):
