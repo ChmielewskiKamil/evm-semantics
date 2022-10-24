@@ -13,7 +13,7 @@ from pyk.kastManip import flatten_label, get_cell, set_cell, split_config_from
 from pyk.ktool import KProve, KRun
 from pyk.ktool.kompile import KompileBackend
 from pyk.ktool.kprint import paren
-from pyk.prelude.kbool import FALSE, andBool, notBool
+from pyk.prelude.kbool import FALSE, andBool, notBool, orBool
 from pyk.prelude.kint import intToken, ltInt
 from pyk.prelude.ml import is_bottom, mlAnd, mlBottom, mlEqualsTrue, mlTop
 from pyk.prelude.string import stringToken
@@ -194,6 +194,41 @@ class KEVM(KProve, KRun):
             if len(wsitems) > 0 and wsitems[-1] == KEVM.wordstack_empty():
                 ws_len = len(wsitems) - 1
                 return mlTop() if ws_len <= 1024 else mlBottom()
+
+        # { true #Equals #stackOverflow(WS, OP) }
+        # { true #Equals #stackUnderflow(WS, OP) }
+        # { true #Equals notBool (#stackUnderflow(WS, OP) orBool #stackOverflow(WS, OP)) }
+        stack_overflow_pattern = KApply(
+            '#stackOverflow(_,_)_EVM_Bool_WordStack_OpCode', [KVariable('WS'), KVariable('OP')]
+        )
+        stack_underflow_pattern = KApply(
+            '#stackUnderflow(_,_)_EVM_Bool_WordStack_OpCode', [KVariable('WS'), KVariable('OP')]
+        )
+        stack_overflow_constraint_pattern = mlEqualsTrue(stack_overflow_pattern)
+        if socp_match := stack_overflow_constraint_pattern.match(constraint):
+            wsitems = KEVM.wordstack_items(socp_match['WS'])
+            if len(wsitems) > 0 and wsitems[-1] == KEVM.wordstack_empty():
+                ws_len = len(wsitems) - 1
+                if ws_len < 1024:
+                    return mlBottom()
+        stack_underflow_constraint_pattern = mlEqualsTrue(stack_underflow_pattern)
+        if socp_match := stack_underflow_constraint_pattern.match(constraint):
+            wsitems = KEVM.wordstack_items(socp_match['WS'])
+            if len(wsitems) > 0 and wsitems[-1] == KEVM.wordstack_empty():
+                ws_len = len(wsitems) - 1
+                stack_needed = KEVM.stack_needed(socp_match['OP'])
+                if stack_needed is not None and stack_needed <= ws_len:
+                    return mlBottom()
+        stack_fine_constraint_pattern = mlEqualsTrue(
+            notBool(orBool([stack_underflow_constraint_pattern, stack_overflow_constraint_pattern]))
+        )
+        if sfcp_match := stack_fine_constraint_pattern.match(constraint):
+            wsitems = KEVM.wordstack_items(sfcp_match['WS'])
+            if len(wsitems) > 0 and wsitems[-1] == KEVM.wordstack_empty():
+                ws_len = len(wsitems) - 1
+                stack_needed = KEVM.stack_needed(sfcp_match['OP'])
+                if ws_len < 1024 and stack_needed is not None and stack_needed <= ws_len:
+                    return mlTop()
 
         # { true #Equals V1 >=Int #sizeByteArray(V2) }
         concrete_bytearray_size_pattern = mlEqualsTrue(
@@ -663,6 +698,25 @@ class KEVM(KProve, KRun):
     @staticmethod
     def accounts(accts: List[KInner]) -> KInner:
         return build_assoc(KApply('.AccountCellMap'), KLabel('_AccountCellMap_'), accts)
+
+    @staticmethod
+    def stack_needed(op: KInner) -> Optional[int]:
+        _LOGGER.info(f'op: {op}')
+        if type(op) is KApply:
+            _LOGGER.info(f'op.label: {op.label}')
+            if op.label.name == 'PUSH(_)_EVM_PushOp_Int':
+                return 0
+            if op.label.name.endswith('NullStackOp'):
+                return 0
+            if op.label.name.endswith('UnStackOp'):
+                return 1
+            if op.label.name.endswith('BinStackOp'):
+                return 2
+            if op.label.name.endswith('TernStackOp'):
+                return 3
+            if op.label.name.endswith('QuadStackOp'):
+                return 4
+        return None
 
 
 class Foundry(KEVM):
