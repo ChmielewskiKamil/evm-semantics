@@ -316,6 +316,15 @@ class KEVM(KProve, KRun):
             if nhalp_match and type(nhalp_match['SCHED']) is KApply:
                 return mlTop() if not KEVM.has_access_list(nhalp_match['SCHED']) else mlBottom()
 
+        # { true #Equals #usesMemory(OP) }
+        # { true #Equals notBool #usesMemory(OP) }
+        uses_memory_pattern = mlEqualsTrue(KApply('#usesMemory(_)_EVM_Bool_OpCode', [KVariable('OP')]))
+        if ump_match := uses_memory_pattern.match(constraint):
+            return mlTop() if KEVM.uses_memory(ump_match['OP']) else mlBottom()
+        not_uses_memory_pattern = mlEqualsTrue(notBool(KApply('#usesMemory(_)_EVM_Bool_OpCode', [KVariable('OP')])))
+        if nump_match := not_uses_memory_pattern.match(constraint):
+            return mlTop() if not KEVM.uses_memory(nump_match['OP']) else mlBottom()
+
         return constraint
 
     def init_state(self, cterm: CTerm) -> None:
