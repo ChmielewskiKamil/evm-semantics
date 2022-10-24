@@ -12,8 +12,10 @@ from pyk.kast import (
     KNonTerminal,
     KRewrite,
     KRule,
+    KToken,
     KVariable,
     Subst,
+    build_assoc,
 )
 from pyk.kastManip import (
     abstract_term_safely,
@@ -38,7 +40,20 @@ from pyk.kcfg import KCFG
 from pyk.ktool import KPrint, KProve
 from pyk.prelude.k import GENERATED_TOP_CELL
 from pyk.prelude.kbool import FALSE
+from pyk.prelude.kint import intToken
 from pyk.prelude.ml import mlAnd, mlTop
+
+
+def simplify_int(i_exp: KInner) -> KInner:
+    accumulated = 0
+    rest = []
+    for i in flatten_label('_+Int_', i_exp):
+        if type(i) is KToken:
+            accumulated += int(i.token)
+        else:
+            rest.append(i)
+    new_int = build_assoc(intToken(0), '_+Int_', [intToken(accumulated)] + rest)
+    return new_int
 
 
 def instantiate_cell_vars(definition: KDefinition, term: KInner) -> KInner:
