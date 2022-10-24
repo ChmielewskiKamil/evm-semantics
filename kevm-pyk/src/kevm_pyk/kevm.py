@@ -637,6 +637,10 @@ class KEVM(KProve, KRun):
         return KApply('#next[_]_EVM_InternalOp_OpCode', [op])
 
     @staticmethod
+    def gas_op(op: KInner, op_applied: KInner) -> KApply:
+        return KApply('#gas[_,_]_EVM_InternalOp_OpCode_OpCode', [op, op_applied])
+
+    @staticmethod
     def jumpi() -> KApply:
         return KApply('JUMPI_EVM_BinStackOp')
 
