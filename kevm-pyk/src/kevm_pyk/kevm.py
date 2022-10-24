@@ -803,6 +803,14 @@ class KEVM(KProve, KRun):
         return None
 
     @staticmethod
+    def width_op(op: KInner) -> int:
+        if type(op) is KApply and op.label.name == 'PUSH(_)_EVM_PushOp_Int':
+            width = op.args[0]
+            assert type(width) is KToken
+            return 1 + int(width.token)
+        return 1
+
+    @staticmethod
     def is_addr1_op(op: KInner) -> bool:
         return type(op) is KApply and op.label.name in {
             'BALANCE_EVM_UnStackOp',
