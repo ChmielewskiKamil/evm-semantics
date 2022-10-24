@@ -1844,8 +1844,8 @@ Overall Gas
     rule <k> #gas [ OP , AOP ] => #memory [ OP , AOP ] ~> #gasExec(SCHED, OP) ~> #deductGas ~> #access [ OP ] ... </k>
          <schedule> SCHED </schedule>
 
-    rule <k> #memory [ OP , _   ] => .                ... </k>                               requires notBool #usesMemory(OP)
-    rule <k> #memory [ OP , AOP ] => #memory(AOP, MU) ... </k> <memoryUsed> MU </memoryUsed> requires #usesMemory(OP)
+    rule <k> #memory [ OP , _   ] => .                                 ... </k>                               requires notBool #usesMemory(OP)
+    rule <k> #memory [ OP , AOP ] => #memory(AOP, MU) ~> #deductMemory ... </k> <memoryUsed> MU </memoryUsed> requires #usesMemory(OP)
 
     syntax InternalOp ::= "#deductGas" | "#deductMemoryGas" | "#deductMemory"
  // -------------------------------------------------------------------------
