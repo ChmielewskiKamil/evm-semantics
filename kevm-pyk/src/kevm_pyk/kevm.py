@@ -329,7 +329,6 @@ class KEVM(KProve, KRun):
         return CTerm(mlAnd([config] + constraints))
 
     def rewrite_step(self, cterm: CTerm) -> Optional[CTerm]:
-        self.init_state(cterm)
         next_cterms: List[Tuple[int, CTerm]] = []
         rules = self.indexed_rules(cterm)
         min_priority = 200
@@ -364,6 +363,7 @@ class KEVM(KProve, KRun):
         return None
 
     def get_basic_block_fast(self, init_cterm: CTerm) -> Tuple[int, CTerm]:
+        self.init_state(init_cterm)
         depth = 0
         _curr_cterm = init_cterm
         while next_cterm := self.rewrite_step(_curr_cterm):
