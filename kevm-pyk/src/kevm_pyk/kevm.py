@@ -206,9 +206,12 @@ class KEVM(KProve, KRun):
     def simplify(self, cterm: CTerm) -> Optional[CTerm]:
         config, *constraints = cterm
         _, subst = split_config_from(config)
+        k_cell = subst['K_CELL']
+        sched_cell = subst['SCHEDULE_CELL']
+        program_cell = subst['PROGRAM_CELL']
+        self.add_opcode_table(program_cell, sched_cell)
 
         # <k> #next [ #dasmOpCode(PROGRAM [ PC ], SCHED) ] ~> REST </k>
-        k_cell = subst['K_CELL']
         byte_lookup_pattern = KApply('_[_]_BYTES-HOOKED_Int_Bytes_Int', [KVariable('PROGRAM'), KVariable('PC')])
         k_cell_pattern = KSequence(
             [
@@ -219,7 +222,8 @@ class KEVM(KProve, KRun):
             ]
         )
         if k_cell_match := k_cell_pattern.match(k_cell):
-            opcode_info = self.opcode_lookup(k_cell_match['PROGRAM'], k_cell_match['PC'], k_cell_match['SCHED'])
+            simplified_pc = simplify_int(k_cell_match['PC'])
+            opcode_info = self.opcode_lookup(k_cell_match['PROGRAM'], simplified_pc, k_cell_match['SCHED'])
             if opcode_info:
                 op, pc = opcode_info
                 new_kcell = KSequence([KEVM.next_op(op), k_cell_match['REST']])
@@ -227,15 +231,20 @@ class KEVM(KProve, KRun):
 
         constraints = [self.simplify_constraint(c) for c in constraints]
 
-        # PC >=Int #sizeByteArray(PROGRAM)
-        constraint_pattern = mlEqualsTrue(
-            KApply('_>=Int_', [KVariable('PC'), KEVM.size_bytearray(KVariable('PROGRAM'))])
+        # { true #Equals V1 >=Int #sizeByteArray(V2) }
+        concrete_bytearray_size_pattern_1 = mlEqualsTrue(
+            KApply('_>=Int_', [KVariable('V1'), KEVM.size_bytearray(KVariable('V2'))])
         )
-        sched_cell = subst['SCHEDULE_CELL']
-        if len(constraints) > 0:
-            if constraint_match := constraint_pattern.match(constraints[-1]):
-                if self.opcode_lookup(constraint_match['PROGRAM'], constraint_match['PC'], sched_cell):
-                    return None
+        # { true #Equals V1 <Int #sizeByteArray(V2) }
+        concrete_bytearray_size_pattern_2 = mlEqualsTrue(
+            KApply('_<Int_', [KVariable('V1'), KEVM.size_bytearray(KVariable('V2'))])
+        )
+        if cbsp_match := concrete_bytearray_size_pattern_1.match(constraints[-1]):
+            if self.opcode_lookup(cbsp_match['V2'], cbsp_match['V1'], sched_cell):
+                return None
+        elif cbsp_match := concrete_bytearray_size_pattern_2.match(constraints[-1]):
+            if self.opcode_lookup(cbsp_match['V2'], cbsp_match['V1'], sched_cell):
+                constraints = constraints[:-1]
 
         if any(map(is_bottom, constraints)):
             return None
