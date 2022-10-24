@@ -807,6 +807,28 @@ class KEVM(KProve, KRun):
             'BERLIN_EVM',
         }
 
+    @staticmethod
+    def uses_memory(op: KInner) -> bool:
+        return type(op) is KApply and op.label.name in {
+            'MLOAD_EVM_UnStackOp',
+            'MSTORE_EVM_BinStackOp',
+            'MSTORE8_EVM_BinStackOp',
+            'SHA3_EVM_BinStackOp',
+            'CODECOPY_EVM_TernStackOp',
+            'EXTCODECOPY_EVM_QuadStackOp',
+            'CALLDATACOPY_EVM_TernStackOp',
+            'RETURNDATACOPY_EVM_TernStackOp',
+            'CREATE_EVM_TernStackOp',
+            'CREATE2_EVM_QuadStackOp',
+            'RETURN_EVM_BinStackOp',
+            'REVERT_EVM_BinStackOp',
+            'LOG(_)_EVM_LogOp_Int',
+            'CALLCODE_EVM_CallOp',
+            'CALL_EVM_CallOp',
+            'DELEGATECALL_EVM_CallSixOp',
+            'STATICCALL_EVM_CallSixOp',
+        }
+
 
 class Foundry(KEVM):
     def __init__(
