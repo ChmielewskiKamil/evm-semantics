@@ -4,7 +4,7 @@ import logging
 import sys
 from pathlib import Path
 from subprocess import CalledProcessError
-from typing import Any, Callable, Dict, Final, Iterable, List, Optional, Tuple
+from typing import Any, Dict, Final, Iterable, List, Optional, Tuple
 
 from pyk.cli_utils import run_process
 from pyk.cterm import CTerm
@@ -30,7 +30,7 @@ _LOGGER: Final = logging.getLogger(__name__)
 class KEVM(KProve, KRun):
     _crewrites: Optional[List[Tuple[int, CTerm, CTerm]]]
     _crewrites_file: Path
-    _rule_index: Optional[Callable[[CTerm], List[Tuple[int, CTerm, CTerm]]]]
+    _rule_index: Optional[Dict[str, List[Tuple[int, CTerm, CTerm]]]]
     _opcode_lookup: Dict[Tuple[KInner, KInner], Dict[KInner, Tuple[KInner, int]]]
     _current_schedule: Optional[KInner]
 
@@ -81,15 +81,34 @@ class KEVM(KProve, KRun):
                     _LOGGER.info(f'Recorded crewrites: {self._crewrites_file}')
         return self._crewrites
 
-    @property
-    def rule_index(self) -> Callable[[CTerm], List[Tuple[int, CTerm, CTerm]]]:
+    def compute_rule_index(self) -> None:
+        _LOGGER.info('Computing rule index.')
+        self._rule_index = {}
+        for priority, lhs, rhs in self.crewrites:
+            index = KEVM.rule_index(lhs)
+            if index is not None:
+                if index not in self._rule_index:
+                    self._rule_index[index] = []
+                self._rule_index[index].append((priority, lhs, rhs))
+
+    @staticmethod
+    def rule_index(cterm: CTerm) -> Optional[str]:
+        k_cell = get_cell(cterm.config, 'K_CELL')
+        if type(k_cell) is KSequence and len(k_cell.items) > 0 and type(k_cell.items[0]) is KApply:
+            return k_cell.items[0].label.name
+        return None
+
+    def indexed_rules(self, cterm: CTerm) -> List[Tuple[int, CTerm, CTerm]]:
         if not self._rule_index:
-
-            def __rule_index(_cterm: CTerm) -> List[Tuple[int, CTerm, CTerm]]:
-                return self.crewrites
-
-            self._rule_index = __rule_index
-        return self._rule_index
+            self.compute_rule_index()
+        if self._rule_index:
+            index = KEVM.rule_index(cterm)
+            if index is not None and index in self._rule_index:
+                rules = self._rule_index[index]
+                _LOGGER.info(f'Rules found for index {index}: {len(rules)}')
+                return rules
+        _LOGGER.info(f'No rule in index for: {self.pretty_print(get_cell(cterm.config, "K_CELL"))}')
+        return self.crewrites
 
     @staticmethod
     def opcode_map_to_dict(map: KInner) -> Dict[KInner, Tuple[KInner, int]]:
@@ -312,8 +331,7 @@ class KEVM(KProve, KRun):
     def rewrite_step(self, cterm: CTerm) -> Optional[CTerm]:
         self.init_state(cterm)
         next_cterms: List[Tuple[int, CTerm]] = []
-        rules = self.rule_index(cterm)
-        _LOGGER.info(f'Rules found for index: {len(rules)}')
+        rules = self.indexed_rules(cterm)
         min_priority = 200
         for priority, lhs, rhs in rules:
             # TODO: needs to be unify_with_constraint instead
