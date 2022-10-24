@@ -32,6 +32,7 @@ class KEVM(KProve, KRun):
     _crewrites_file: Path
     _rule_index: Optional[Callable[[CTerm], List[Tuple[int, CTerm, CTerm]]]]
     _opcode_lookup: Dict[Tuple[KInner, KInner], Dict[KInner, Tuple[KInner, int]]]
+    _current_schedule: Optional[KInner]
 
     def __init__(
         self,
@@ -50,6 +51,7 @@ class KEVM(KProve, KRun):
         self._crewrites_file = self.definition_dir / 'crewrites.json'
         self._rule_index = None
         self._opcode_lookup = {}
+        self._current_schedule = None
 
     @property
     def crewrites(self) -> List[Tuple[int, CTerm, CTerm]]:
@@ -203,13 +205,19 @@ class KEVM(KProve, KRun):
 
         return constraint
 
+    def init_state(self, cterm: CTerm) -> None:
+        config, *constraints = cterm
+        _, subst = split_config_from(config)
+        sched_cell = subst['SCHEDULE_CELL']
+        program_cell = subst['PROGRAM_CELL']
+        self._current_schedule = sched_cell
+        self.add_opcode_table(program_cell, sched_cell)
+
     def simplify(self, cterm: CTerm) -> Optional[CTerm]:
         config, *constraints = cterm
         _, subst = split_config_from(config)
         k_cell = subst['K_CELL']
         sched_cell = subst['SCHEDULE_CELL']
-        program_cell = subst['PROGRAM_CELL']
-        self.add_opcode_table(program_cell, sched_cell)
 
         # <k> #next [ #dasmOpCode(PROGRAM [ PC ], SCHED) ] ~> REST </k>
         byte_lookup_pattern = KApply('_[_]_BYTES-HOOKED_Int_Bytes_Int', [KVariable('PROGRAM'), KVariable('PC')])
@@ -252,6 +260,7 @@ class KEVM(KProve, KRun):
         return CTerm(mlAnd([config] + constraints))
 
     def rewrite_step(self, cterm: CTerm) -> Optional[CTerm]:
+        self.init_state(cterm)
         next_cterms: List[Tuple[int, CTerm]] = []
         rules = self.rule_index(cterm)
         _LOGGER.info(f'Rules found for index: {len(rules)}')
