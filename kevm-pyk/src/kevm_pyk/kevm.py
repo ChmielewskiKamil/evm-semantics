@@ -190,8 +190,8 @@ class KEVM(KProve, KRun):
             KApply('_<=Int_', [KApply('#sizeWordStack(_)_EVM-TYPES_Int_WordStack', [KVariable('WS')]), intToken(1024)])
         )
         if ws_match := word_stack_size_pattern.match(constraint):
-            wsitems = flatten_label('_:__EVM-TYPES_WordStack_Int_WordStack', ws_match['WS'])
-            if len(wsitems) > 0 and wsitems[-1] == KApply('.WordStack_EVM-TYPES_WordStack'):
+            wsitems = KEVM.wordstack_items(ws_match['WS'])
+            if len(wsitems) > 0 and wsitems[-1] == KEVM.wordstack_empty():
                 ws_len = len(wsitems) - 1
                 return mlTop() if ws_len <= 1024 else mlBottom()
 
@@ -627,8 +627,16 @@ class KEVM(KProve, KRun):
         )
 
     @staticmethod
+    def wordstack_empty() -> KInner:
+        return KApply('.WordStack_EVM-TYPES_WordStack')
+
+    @staticmethod
+    def wordstack_items(ws: KInner) -> List[KInner]:
+        return flatten_label('_:__EVM-TYPES_WordStack_Int_WordStack', ws)
+
+    @staticmethod
     def wordstack_len(constrained_term: KInner) -> int:
-        return len(flatten_label('_:__EVM-TYPES_WordStack_Int_WordStack', get_cell(constrained_term, 'WORDSTACK_CELL')))
+        return len(KEVM.wordstack_items(get_cell(constrained_term, 'WORDSTACK_CELL')))
 
     @staticmethod
     def parse_bytestack(s: KInner) -> KApply:
