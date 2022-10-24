@@ -31,7 +31,7 @@ class KEVM(KProve, KRun):
     _crewrites: Optional[List[Tuple[int, CTerm, CTerm]]]
     _crewrites_file: Path
     _rule_index: Optional[Callable[[CTerm], List[Tuple[int, CTerm, CTerm]]]]
-    _opcode_lookup: Dict[KInner, Dict[KInner, Tuple[KInner, int]]]
+    _opcode_lookup: Dict[Tuple[KInner, KInner], Dict[KInner, Tuple[KInner, int]]]
 
     def __init__(
         self,
@@ -104,13 +104,15 @@ class KEVM(KProve, KRun):
             _dict[pcount] = (opcode_val, int(opcode_width.token))
         return _dict
 
-    def opcode_lookup(self, program: KInner, pcount: KInner, schedule: KInner) -> Optional[Tuple[KInner, int]]:
-        if program not in self._opcode_lookup:
-            program_hash = hashlib.md5(json.dumps(program.to_dict()).encode('utf-8')).hexdigest()
-            program_hash_file = self.use_directory / f'{program_hash}.json'
-            if program_hash_file.exists():
+    def add_opcode_table(self, program: KInner, schedule: KInner) -> None:
+        if (program, schedule) not in self._opcode_lookup:
+            opcode_table_digest = hashlib.md5(
+                (json.dumps(program.to_dict()) + json.dumps(schedule.to_dict())).encode('utf-8')
+            ).hexdigest()
+            opcode_table_file = self.use_directory / f'{opcode_table_digest}.json'
+            if opcode_table_file.exists():
                 pdict = {}
-                with open(program_hash_file, 'r') as phf:
+                with open(opcode_table_file, 'r') as phf:
                     for _pc, _op, width in json.loads(phf.read()):
                         op = KAst.from_dict(_op)
                         assert isinstance(op, KInner)
@@ -118,11 +120,15 @@ class KEVM(KProve, KRun):
                         assert isinstance(pc, KInner)
                         assert type(width) is int
                         pdict[pc] = (op, width)
-                self._opcode_lookup[program] = pdict
-                _LOGGER.info(f'Loaded bytecode disassembly for {self.pretty_print(program)} from: {program_hash_file}')
+                self._opcode_lookup[(program, schedule)] = pdict
+                _LOGGER.info(
+                    f'Loaded bytecode disassembly for {(self.pretty_print(program), self.pretty_print(schedule))} from: {opcode_table_file}'
+                )
 
             else:
-                _LOGGER.info(f'Computing bytecode disassembly: {self.pretty_print(program)}')
+                _LOGGER.info(
+                    f'Computing bytecode disassembly: {(self.pretty_print(program), self.pretty_print(schedule))}'
+                )
                 lookup_evm_pgm = KApply(
                     'dasm_program___FOUNDRY_EthereumSimulation_ByteArray_Schedule', [program, schedule]
                 )
@@ -140,19 +146,25 @@ class KEVM(KProve, KRun):
                 if type(k_cell) is KSequence and len(k_cell.items) > 0:
                     k_cell = k_cell.items[0]
                 if type(k_cell) is KApply and k_cell.label.name == 'dasm_result__FOUNDRY_EthereumSimulation_Map':
-                    self._opcode_lookup[program] = KEVM.opcode_map_to_dict(k_cell.args[0])
+                    self._opcode_lookup[(program, schedule)] = KEVM.opcode_map_to_dict(k_cell.args[0])
 
-                with open(program_hash_file, 'w') as phf:
+                with open(opcode_table_file, 'w') as phf:
                     json_program_lookup = []
-                    for pc, (op, width) in self._opcode_lookup[program].items():
+                    for pc, (op, width) in self._opcode_lookup[(program, schedule)].items():
                         json_program_lookup.append([pc.to_dict(), op.to_dict(), width])
                     phf.write(json.dumps(json_program_lookup))
                     _LOGGER.info(
-                        f'Recorded bytecode disassembly for {self.pretty_print(program)} at: {program_hash_file}'
+                        f'Recorded bytecode disassembly for {(self.pretty_print(program), self.pretty_print(schedule))} at: {opcode_table_file}'
                     )
 
-        if program in self._opcode_lookup and pcount in self._opcode_lookup[program]:
-            return self._opcode_lookup[program][pcount]
+    def opcode_lookup(
+        self, program: KInner, pcount: KInner, schedule: KInner, compute: bool = False
+    ) -> Optional[Tuple[KInner, int]]:
+        if compute:
+            self.add_opcode_table(program, schedule)
+
+        if (program, schedule) in self._opcode_lookup and pcount in self._opcode_lookup[(program, schedule)]:
+            return self._opcode_lookup[(program, schedule)][pcount]
 
         return None
 
