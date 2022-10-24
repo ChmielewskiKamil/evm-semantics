@@ -8,7 +8,7 @@ from typing import Any, Dict, Final, Iterable, List, Optional, Tuple
 
 from pyk.cli_utils import run_process
 from pyk.cterm import CTerm
-from pyk.kast import KApply, KAst, KInner, KLabel, KSequence, KSort, KToken, KVariable, Subst, build_assoc
+from pyk.kast import KApply, KAst, KInner, KLabel, KSequence, KSort, KToken, KVariable, Subst, build_assoc, build_cons
 from pyk.kastManip import flatten_label, get_cell, split_config_from
 from pyk.ktool import KProve, KRun
 from pyk.ktool.kompile import KompileBackend
@@ -766,6 +766,10 @@ class KEVM(KProve, KRun):
     @staticmethod
     def wordstack_empty() -> KInner:
         return KApply('.WordStack_EVM-TYPES_WordStack')
+
+    @staticmethod
+    def wordstack(items: Iterable[KInner]) -> KInner:
+        return build_cons(KEVM.wordstack_empty(), '_:__EVM-TYPES_WordStack_Int_WordStack', items)
 
     @staticmethod
     def wordstack_items(ws: KInner) -> List[KInner]:
