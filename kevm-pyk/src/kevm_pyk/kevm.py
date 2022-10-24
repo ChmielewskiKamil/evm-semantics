@@ -215,7 +215,7 @@ class KEVM(KProve, KRun):
             return mlBottom()
         inf_gas_pattern_3 = mlEqualsTrue(KApply('_>=Int_', [KEVM.inf_gas(KVariable('V1')), KVariable('V2')]))
         if inf_gas_pattern_3.match(constraint):
-            return mlBottom()
+            return mlTop()
 
         # { true #Equals #sizeWordStack(WS) <=Int 1024 }
         word_stack_size_pattern = mlEqualsTrue(
