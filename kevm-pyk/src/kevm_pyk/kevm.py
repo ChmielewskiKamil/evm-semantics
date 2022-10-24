@@ -301,6 +301,20 @@ class KEVM(KProve, KRun):
                 mlTop() if not (KEVM.is_addr1_op(aop_match['OP']) or KEVM.is_addr2_op(aop_match['OP'])) else mlBottom()
             )
 
+        # { true #Equals Ghasaccesslist << SCHED >> }
+        # { true #Equals notBool Ghasaccesslist << SCHED >> }
+        has_access_list = KApply(
+            '_<<_>>_EVM_Bool_ScheduleFlag_Schedule', [KApply('Ghasaccesslist_EVM_ScheduleFlag'), KVariable('SCHED')]
+        )
+        has_access_list_pattern = mlEqualsTrue(has_access_list)
+        if halp_match := has_access_list_pattern.match(constraint):
+            if halp_match and type(halp_match['SCHED']) is KApply:
+                return mlTop() if KEVM.has_access_list(halp_match['SCHED']) else mlBottom()
+        no_has_access_list_pattern = mlEqualsTrue(notBool(has_access_list))
+        if nhalp_match := no_has_access_list_pattern.match(constraint):
+            if nhalp_match and type(nhalp_match['SCHED']) is KApply:
+                return mlTop() if not KEVM.has_access_list(nhalp_match['SCHED']) else mlBottom()
+
         return constraint
 
     def init_state(self, cterm: CTerm) -> None:
@@ -783,6 +797,13 @@ class KEVM(KProve, KRun):
             'CALL_EVM_CallOp',
             'DELEGATECALL_EVM_CallSixOp',
             'STATICCALL_EVM_CallSixOp',
+        }
+
+    @staticmethod
+    def has_access_list(schedule: KInner) -> bool:
+        return type(schedule) is KApply and schedule.label.name in {
+            'LONDON_EVM',
+            'BERLIN_EVM',
         }
 
 
