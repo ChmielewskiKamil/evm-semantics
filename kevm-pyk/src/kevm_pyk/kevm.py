@@ -297,6 +297,7 @@ class KEVM(KProve, KRun):
                 constraint = mlEqualsTrue(KApply(diseq, [self.simplify_int(iss['V1']), self.simplify_int(iss['V2'])]))
 
         # { true #Equals V1 >=Int #sizeByteArray(V2) }
+        # { true #Equals V1 <Int #sizeByteArray(V2) }
         concrete_bytearray_size_pattern = mlEqualsTrue(
             KApply('_>=Int_', [KVariable('V1'), KEVM.size_bytearray(KVariable('V2'))])
         )
@@ -306,8 +307,6 @@ class KEVM(KProve, KRun):
             ):
                 return mlBottom()
             return mlEqualsTrue(KApply('_>=Int_', [cbsp_match['V1'], KEVM.size_bytearray(cbsp_match['V2'])]))
-
-        # { true #Equals V1 <Int #sizeByteArray(V2) }
         concrete_bytearray_size_pattern = mlEqualsTrue(
             KApply('_<Int_', [KVariable('V1'), KEVM.size_bytearray(KVariable('V2'))])
         )
