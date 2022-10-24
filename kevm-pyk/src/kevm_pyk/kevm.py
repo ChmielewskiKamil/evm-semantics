@@ -108,7 +108,8 @@ class KEVM(KProve, KRun):
                 rules = self._rule_index[index]
                 _LOGGER.info(f'Rules found for index {index}: {len(rules)}')
                 return rules
-        _LOGGER.info(f'No rule in index for: {self.pretty_print(get_cell(cterm.config, "K_CELL"))}')
+        k_cell_compact = ' '.join(self.pretty_print(get_cell(cterm.config, "K_CELL")).split("\n"))
+        _LOGGER.info(f'No rules in index for: {k_cell_compact}')
         return self.crewrites
 
     @staticmethod
