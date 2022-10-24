@@ -9,7 +9,7 @@ from typing import Any, Dict, Final, Iterable, List, Optional, Tuple
 from pyk.cli_utils import run_process
 from pyk.cterm import CTerm
 from pyk.kast import KApply, KAst, KInner, KLabel, KSequence, KSort, KToken, KVariable, Subst, build_assoc
-from pyk.kastManip import flatten_label, get_cell, set_cell, split_config_from
+from pyk.kastManip import flatten_label, get_cell, split_config_from
 from pyk.ktool import KProve, KRun
 from pyk.ktool.kompile import KompileBackend
 from pyk.ktool.kprint import paren
@@ -358,9 +358,7 @@ class KEVM(KProve, KRun):
 
     def simplify(self, cterm: CTerm) -> Optional[CTerm]:
         config, *constraints = cterm
-        _, subst = split_config_from(config)
-        k_cell = subst['K_CELL']
-        gas_cell = subst['GAS_CELL']
+        empty_config, subst = split_config_from(config)
 
         # <k> #next [ #dasmOpCode(PROGRAM [ PC ], SCHED) ] ~> REST </k>
         byte_lookup_pattern = KApply('_[_]_BYTES-HOOKED_Int_Bytes_Int', [KVariable('PROGRAM'), KVariable('PC')])
@@ -372,21 +370,19 @@ class KEVM(KProve, KRun):
                 KVariable('REST'),
             ]
         )
-        if k_cell_match := k_cell_pattern.match(k_cell):
-            simplified_pc = simplify_int(k_cell_match['PC'])
-            opcode_info = self.opcode_lookup(k_cell_match['PROGRAM'], simplified_pc, k_cell_match['SCHED'])
+        if k_cell_match := k_cell_pattern.match(subst['K_CELL']):
+            pcount = k_cell_match['PC']
+            opcode_info = self.opcode_lookup(k_cell_match['PROGRAM'], pcount, k_cell_match['SCHED'])
             if opcode_info:
-                op, pc = opcode_info
-                new_k_cell = KSequence([KEVM.next_op(op), k_cell_match['REST']])
-                config = set_cell(config, 'K_CELL', new_k_cell)
+                nop, _ = opcode_info
+                subst['K_CELL'] = KSequence([KEVM.next_op(nop), k_cell_match['REST']])
 
         # <gas> #gas(VGAS) -Int G </gas>
         gas_pattern = KApply('_-Int_', [KEVM.inf_gas(KVariable('V1')), KVariable('V2')])
-        if gp_match := gas_pattern.match(gas_cell):
-            new_gas_cell = KEVM.inf_gas(KApply('_-Int_', [gp_match['V1'], gp_match['V2']]))
-            config = set_cell(config, 'GAS_CELL', new_gas_cell)
+        if gp_match := gas_pattern.match(subst['GAS_CELL']):
+            subst['GAS_CELL'] = KEVM.inf_gas(KApply('_-Int_', [gp_match['V1'], gp_match['V2']]))
 
-        return CTerm(mlAnd([config] + constraints))
+        return CTerm(mlAnd([Subst(subst)(empty_config)] + constraints))
 
     def rewrite_step(self, cterm: CTerm) -> Optional[CTerm]:
         next_cterms: List[Tuple[int, CTerm]] = []
