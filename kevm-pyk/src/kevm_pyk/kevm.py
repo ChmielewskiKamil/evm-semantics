@@ -284,41 +284,39 @@ class KEVM(KProve, KRun):
                 if ws_len < 1024 and stack_needed is not None and stack_needed <= ws_len:
                     return mlTop()
 
-        # { true #Equals V1 +Int #widthOp(OP) >=Int V2 }
-        # { true #Equals V1 +Int #widthOp(OP) <Int V2 }
-        widthop_pattern = KApply('_+Int_', [KVariable('V1'), KApply('#widthOp(_)_EVM_Int_OpCode', [KVariable('OP')])])
-        compact_widthop_pattern_1 = mlEqualsTrue(KApply('_>=Int_', [widthop_pattern, KVariable('V2')]))
-        if cwop_match := compact_widthop_pattern_1.match(constraint):
-            num = cwop_match['V1']
-            if type(num) is KToken:
-                new_width = int(num.token) + KEVM.width_op(cwop_match['OP'])
-                constraint = mlEqualsTrue(KApply('_>=Int_', [intToken(new_width), cwop_match['V2']]))
-        compact_widthop_pattern_2 = mlEqualsTrue(KApply('_<Int_', [widthop_pattern, KVariable('V2')]))
-        if cwop_match := compact_widthop_pattern_2.match(constraint):
-            num = cwop_match['V1']
-            if type(num) is KToken:
-                new_width = int(num.token) + KEVM.width_op(cwop_match['OP'])
-                constraint = mlEqualsTrue(KApply('_<Int_', [intToken(new_width), cwop_match['V2']]))
+        # { true #Equals V1 >Int V2 }
+        # { true #Equals V1 >=Int V2 }
+        # { true #Equals V1 <Int V2 }
+        # { true #Equals V1 <=Int V2 }
+        # { true #Equals V1 ==Int V2 }
+        # { true #Equals V1 =/=Int V2 }
+        diseq_labels = ['_>Int_', '_>=Int_', '_<Int_', '_<=Int_', '_==Int_', '_=/=Int_']
+        for diseq in diseq_labels:
+            diseq_pattern = mlEqualsTrue(KApply(diseq, [KVariable('V1'), KVariable('V2')]))
+            if iss := diseq_pattern.match(constraint):
+                constraint = mlEqualsTrue(KApply(diseq, [self.simplify_int(iss['V1']), self.simplify_int(iss['V2'])]))
 
         # { true #Equals V1 >=Int #sizeByteArray(V2) }
         concrete_bytearray_size_pattern = mlEqualsTrue(
             KApply('_>=Int_', [KVariable('V1'), KEVM.size_bytearray(KVariable('V2'))])
         )
         if cbsp_match := concrete_bytearray_size_pattern.match(constraint):
-            new_i = simplify_int(cbsp_match['V1'])
-            if self._current_schedule and self.opcode_lookup(cbsp_match['V2'], new_i, self._current_schedule):
+            if self._current_schedule and self.opcode_lookup(
+                cbsp_match['V2'], cbsp_match['V1'], self._current_schedule
+            ):
                 return mlBottom()
-            return mlEqualsTrue(KApply('_>=Int_', [new_i, KEVM.size_bytearray(cbsp_match['V2'])]))
+            return mlEqualsTrue(KApply('_>=Int_', [cbsp_match['V1'], KEVM.size_bytearray(cbsp_match['V2'])]))
 
         # { true #Equals V1 <Int #sizeByteArray(V2) }
         concrete_bytearray_size_pattern = mlEqualsTrue(
             KApply('_<Int_', [KVariable('V1'), KEVM.size_bytearray(KVariable('V2'))])
         )
         if cbsp_match := concrete_bytearray_size_pattern.match(constraint):
-            new_i = simplify_int(cbsp_match['V1'])
-            if self._current_schedule and self.opcode_lookup(cbsp_match['V2'], new_i, self._current_schedule):
+            if self._current_schedule and self.opcode_lookup(
+                cbsp_match['V2'], cbsp_match['V1'], self._current_schedule
+            ):
                 return mlTop()
-            return mlEqualsTrue(KApply('_<Int_', [new_i, KEVM.size_bytearray(cbsp_match['V2'])]))
+            return mlEqualsTrue(KApply('_<Int_', [cbsp_match['V1'], KEVM.size_bytearray(cbsp_match['V2'])]))
 
         # { true #Equals isAddr1Op(OP) }
         # { true #Equals isAddr2Op(OP) }
