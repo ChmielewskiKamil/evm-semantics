@@ -19,7 +19,7 @@ from pyk.prelude.ml import is_bottom, mlAnd, mlBottom, mlEqualsTrue, mlTop
 from pyk.prelude.string import stringToken
 from pyk.utils import unique
 
-from .utils import KDefinition__crewrites, add_include_arg
+from .utils import KDefinition__crewrites, add_include_arg, simplify_int
 
 _LOGGER: Final = logging.getLogger(__name__)
 
@@ -184,6 +184,22 @@ class KEVM(KProve, KRun):
             if len(wsitems) > 0 and wsitems[-1] == KApply('.WordStack_EVM-TYPES_WordStack'):
                 ws_len = len(wsitems) - 1
                 return mlTop() if ws_len <= 1024 else mlBottom()
+
+        # { true #Equals V1 >=Int #sizeByteArray(V2) }
+        concrete_bytearray_size_pattern = mlEqualsTrue(
+            KApply('_>=Int_', [KVariable('V1'), KEVM.size_bytearray(KVariable('V2'))])
+        )
+        if cbsp_match := concrete_bytearray_size_pattern.match(constraint):
+            new_i = simplify_int(cbsp_match['V1'])
+            return mlEqualsTrue(KApply('_>=Int_', [new_i, KEVM.size_bytearray(cbsp_match['V2'])]))
+
+        # { true #Equals V1 <Int #sizeByteArray(V2) }
+        concrete_bytearray_size_pattern = mlEqualsTrue(
+            KApply('_<Int_', [KVariable('V1'), KEVM.size_bytearray(KVariable('V2'))])
+        )
+        if cbsp_match := concrete_bytearray_size_pattern.match(constraint):
+            new_i = simplify_int(cbsp_match['V1'])
+            return mlEqualsTrue(KApply('_<Int_', [new_i, KEVM.size_bytearray(cbsp_match['V2'])]))
 
         return constraint
 
