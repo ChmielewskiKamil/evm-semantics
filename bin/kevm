@@ -293,7 +293,27 @@ run_solc() {
 }
 
 run_foundry_kompile() {
-    run_kevm_pyk foundry-kompile --definition "${backend_dir}" "$@"
+    local ccopts ccopt kompile_opts openss_root brew_root
+
+    kompile_opts=()
+    ccopts+=( -L${libff_dir}/lib -I${libff_dir}/include  )
+    ccopts+=( ${plugin_include}/c/plugin_util.cpp        )
+    ccopts+=( ${plugin_include}/c/crypto.cpp             )
+    ccopts+=( ${plugin_include}/c/blake2.cpp             )
+    ccopts+=( -g -std=c++14                              )
+    ccopts+=( -lff -lcryptopp -lsecp256k1 -lssl -lcrypto )
+    if [[ "$(uname -s)" == 'Linux' ]]; then
+        ccopts+=( -lprocps )
+    elif [[ "$(uname -s)" == 'Darwin' ]]; then
+        openssl_root="$(brew --prefix openssl)"
+        brew_root="$(brew --prefix)"
+        ccopts+=( -I${brew_root}/include -L/${brew_root}/lib -I${openssl_root}/include -L${openssl_root}/lib )
+        ccopts+=( -I${libcryptopp_dir}/include -L/${libcryptopp_dir}/lib                                     )
+    fi
+    for ccopt in "${ccopts[@]}"; do
+        kompile_opts+=(-ccopt="${ccopt}")
+    done
+    run_kevm_pyk foundry-kompile --definition "${backend_dir}" "${kompile_opts[@]}" "$@"
 }
 
 run_foundry_prove() {

@@ -173,12 +173,16 @@ def exec_foundry_kompile(
     _ignore_arg(kwargs, 'o1', '-O1')
     _ignore_arg(kwargs, 'o2', '-O2')
     _ignore_arg(kwargs, 'o3', '-O3')
-    main_module = 'FOUNDRY-MAIN'
-    syntax_module = 'FOUNDRY-MAIN'
+
     foundry_kompiled_dir = foundry_out / 'kompiled'
     foundry_haskell_dir = foundry_kompiled_dir / 'haskell'
+    foundry_llvm_dir = foundry_kompiled_dir / 'llvm'
     foundry_main_file = foundry_kompiled_dir / 'foundry.k'
     haskell_kompiled_timestamp = foundry_haskell_dir / 'timestamp'
+    llvm_kompiled_timestamp = foundry_llvm_dir / 'timestamp'
+
+    main_module = 'FOUNDRY-MAIN'
+    syntax_module = 'FOUNDRY-MAIN'
     requires = ['foundry.md'] + list(requires)
     imports = ['FOUNDRY'] + list(imports)
 
@@ -222,6 +226,23 @@ def exec_foundry_kompile(
             profile=profile,
             debug=debug,
             ccopts=ccopts,
+        )
+
+    if regen or rekompile or not llvm_kompiled_timestamp.exists():
+        _LOGGER.info(f'Kompiling {foundry_main_file} at: {foundry_llvm_dir}')
+        KEVM.kompile(
+            foundry_llvm_dir,
+            KompileBackend.LLVM,
+            foundry_main_file,
+            emit_json=True,
+            includes=includes,
+            main_module_name=main_module,
+            syntax_module_name=syntax_module,
+            md_selector=md_selector,
+            profile=profile,
+            debug=debug,
+            ccopts=ccopts,
+            llvm_kompile=llvm_kompile,
         )
 
 
