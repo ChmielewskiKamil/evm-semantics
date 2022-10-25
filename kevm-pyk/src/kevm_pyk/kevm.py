@@ -33,6 +33,7 @@ class KEVM(KProve, KRun):
     _rule_index: Optional[Dict[str, List[Tuple[int, CTerm, CTerm]]]]
     _opcode_lookup: Dict[Tuple[KInner, KInner], Dict[KInner, Tuple[KInner, int]]]
     _current_schedule: Optional[KInner]
+    _llvm_krun: KRun
 
     def __init__(
         self,
@@ -47,6 +48,7 @@ class KEVM(KProve, KRun):
         KProve.__init__(self, definition_dir, use_directory=use_directory, main_file=main_file, profile=profile)
         KRun.__init__(self, definition_dir, use_directory=use_directory, profile=profile)
         KEVM._patch_symbol_table(self.symbol_table)
+        self._llvm_krun = KRun(definition_dir.parent / 'llvm', use_directory=use_directory, profile=profile)
         self._crewrites = None
         self._crewrites_file = self.definition_dir / 'crewrites.json'
         self._rule_index = None
@@ -165,7 +167,7 @@ class KEVM(KProve, KRun):
                     '-pCHAINID=cat',
                     '--no-expand-macros',
                 ]
-                result = self.run(lookup_evm_pgm, args=run_args)
+                result = self._llvm_krun.run(lookup_evm_pgm, args=run_args)
                 k_cell = get_cell(result.config, 'K_CELL')
                 if type(k_cell) is KSequence and k_cell.arity > 0:
                     k_cell = k_cell.items[0]
