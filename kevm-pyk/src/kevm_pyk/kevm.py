@@ -48,7 +48,7 @@ class KEVM(KProve, KRun):
         KProve.__init__(self, definition_dir, use_directory=use_directory, main_file=main_file, profile=profile)
         KRun.__init__(self, definition_dir, use_directory=use_directory, profile=profile)
         KEVM._patch_symbol_table(self.symbol_table)
-        self._llvm_krun = KRun(definition_dir.parent / 'llvm', use_directory=use_directory, profile=profile)
+        self._llvm_krun = KRun(self.definition_dir.parent / 'llvm', use_directory=use_directory, profile=profile)
         self._crewrites = None
         self._crewrites_file = self.definition_dir / 'crewrites.json'
         self._rule_index = None
