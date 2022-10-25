@@ -95,6 +95,7 @@ class KEVM(KProve, KRun):
     @staticmethod
     def rule_index(cterm: CTerm) -> Optional[str]:
         k_cell = get_cell(cterm.config, 'K_CELL')
+        # TODO: Should also be checking that the klabel is a free constructor klabel
         if type(k_cell) is KSequence and k_cell.arity > 0 and type(k_cell.items[0]) is KApply:
             return k_cell.items[0].label.name
         return None
