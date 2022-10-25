@@ -156,24 +156,12 @@ class KEVM(KProve, KRun):
                     f'Computing bytecode disassembly: {(self.pretty_print(program), self.pretty_print(schedule))}'
                 )
                 lookup_evm_pgm = KApply(
-                    'dasm_program___FOUNDRY_EthereumSimulation_ByteArray_Schedule', [program, schedule]
+                    'dasmOpCodes(_,_,_,_)_FOUNDRY_Map_ByteArray_Schedule_Int_Map',
+                    [program, schedule, intToken(0), KApply('.Map')],
                 )
-                run_args = [
-                    "-cSCHEDULE=LblLONDON'Unds'EVM{}()",
-                    '-pSCHEDULE=cat',
-                    '-cMODE=LblNORMAL{}()',
-                    '-pMODE=cat',
-                    '-cCHAINID=\\dv{SortInt{}}("1")',
-                    '-pCHAINID=cat',
-                    '--no-expand-macros',
-                ]
-                result = self._llvm_krun.run(lookup_evm_pgm, args=run_args)
-                k_cell = get_cell(result.config, 'K_CELL')
-                if type(k_cell) is KSequence and k_cell.arity > 0:
-                    k_cell = k_cell.items[0]
-                if type(k_cell) is KApply and k_cell.label.name == 'dasm_result__FOUNDRY_EthereumSimulation_Map':
-                    self._opcode_lookup[(program, schedule)] = KEVM.opcode_map_to_dict(k_cell.args[0])
-
+                result = self.simplify_concrete(lookup_evm_pgm)
+                assert result is not None
+                self._opcode_lookup[(program, schedule)] = KEVM.opcode_map_to_dict(result)
                 with open(opcode_table_file, 'w') as phf:
                     json_program_lookup = []
                     for pc, (op, width) in self._opcode_lookup[(program, schedule)].items():
@@ -192,6 +180,26 @@ class KEVM(KProve, KRun):
         if (program, schedule) in self._opcode_lookup and pcount in self._opcode_lookup[(program, schedule)]:
             return self._opcode_lookup[(program, schedule)][pcount]
 
+        return None
+
+    def simplify_concrete(self, i: KInner) -> Optional[KInner]:
+        run_args = [
+            "-cSCHEDULE=LblLONDON'Unds'EVM{}()",
+            '-pSCHEDULE=cat',
+            '-cMODE=LblNORMAL{}()',
+            '-pMODE=cat',
+            '-cCHAINID=\\dv{SortInt{}}("1")',
+            '-pCHAINID=cat',
+            '--no-expand-macros',
+            '--depth',
+            '1',
+        ]
+        result = self._llvm_krun.run(KApply('simplify__FOUNDRY_EthereumSimulation_Result', [i]), args=run_args)
+        k_cell = get_cell(result.config, 'K_CELL')
+        if type(k_cell) is KSequence and k_cell.arity > 0:
+            k_cell = k_cell.items[0]
+        if type(k_cell) is KApply and k_cell.arity > 0:
+            return k_cell.args[0]
         return None
 
     def simplify_int(self, i: KInner) -> KInner:
