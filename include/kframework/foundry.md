@@ -87,10 +87,12 @@ module FOUNDRY
     syntax OpCodeResult ::= opcode( OpCode , Int )
  // ----------------------------------------------
 
-    syntax EthereumSimulation ::= "dasm_program" ByteArray Schedule
-                                | "dasm_result" Map
+    syntax EthereumSimulation ::= "simplify" Result
  // -----------------------------------------------
-    rule <k> dasm_program PGM SCHED => dasm_result dasmOpCodes(PGM, SCHED, 0, .Map) </k> <exit-code> 1 => 0 </exit-code>
+    rule <k> simplify _ ... </k> <exit-code> 1 => 0 </exit-code>
+
+    syntax Result ::= Bool | Map
+ // ----------------------------
 
     syntax Map ::= dasmOpCodes( ByteArray , Schedule , Int , Map ) [function]
  // -------------------------------------------------------------------------
