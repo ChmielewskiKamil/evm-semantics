@@ -8,12 +8,25 @@ from typing import Any, Dict, Final, Iterable, List, Optional, Tuple
 
 from pyk.cli_utils import run_process
 from pyk.cterm import CTerm
-from pyk.kast import KApply, KAst, KInner, KLabel, KSequence, KSort, KToken, KVariable, Subst, build_assoc, build_cons
-from pyk.kastManip import flatten_label, get_cell, split_config_from
+from pyk.kast import (
+    KApply,
+    KAst,
+    KInner,
+    KLabel,
+    KRewrite,
+    KSequence,
+    KSort,
+    KToken,
+    KVariable,
+    Subst,
+    build_assoc,
+    build_cons,
+)
+from pyk.kastManip import flatten_label, free_vars, get_cell, split_config_from
 from pyk.ktool import KProve, KRun
 from pyk.ktool.kompile import KompileBackend
 from pyk.ktool.kprint import paren
-from pyk.prelude.kbool import FALSE, andBool, notBool, orBool
+from pyk.prelude.kbool import FALSE, TRUE, notBool
 from pyk.prelude.kint import intToken, ltInt
 from pyk.prelude.ml import is_bottom, mlAnd, mlBottom, mlEqualsTrue, mlTop
 from pyk.prelude.string import stringToken
@@ -49,6 +62,7 @@ class KEVM(KProve, KRun):
         KRun.__init__(self, definition_dir, use_directory=use_directory, profile=profile)
         KEVM._patch_symbol_table(self.symbol_table)
         self._llvm_krun = KRun(self.definition_dir.parent / 'llvm', use_directory=use_directory, profile=profile)
+        KEVM._patch_symbol_table(self._llvm_krun.symbol_table)
         self._crewrites = None
         self._crewrites_file = self.definition_dir / 'crewrites.json'
         self._rule_index = None
@@ -194,7 +208,7 @@ class KEVM(KProve, KRun):
             '--depth',
             '1',
         ]
-        result = self._llvm_krun.run(KApply('simplify__FOUNDRY_EthereumSimulation_Result', [i]), args=run_args)
+        result = self._llvm_krun.run_kore(KApply('simplify__FOUNDRY_EthereumSimulation_Result', [i]), args=run_args)
         k_cell = get_cell(result.config, 'K_CELL')
         if type(k_cell) is KSequence and k_cell.arity > 0:
             k_cell = k_cell.items[0]
@@ -228,193 +242,42 @@ class KEVM(KProve, KRun):
         if constraint == mlEqualsTrue(FALSE):
             return mlBottom()
 
-        # { true #Equals ( notBool ( false andBool _ ) ) }
-        # { true #Equals notBool ( false ) }
-        trivial_pattern = mlEqualsTrue(notBool(andBool([FALSE, KVariable('_')])))
-        if trivial_pattern.match(constraint):
+        if constraint == mlEqualsTrue(TRUE):
             return mlTop()
-        trivial_pattern = mlEqualsTrue(notBool(FALSE))
-        if trivial_pattern.match(constraint):
+
+        if constraint == mlEqualsTrue(notBool(TRUE)):
+            return mlBottom()
+
+        if constraint == mlEqualsTrue(notBool(FALSE)):
             return mlTop()
 
         # { true #Equals V1 <=Int #gas(V2) }
         # { true #Equals #gas(V1) <Int V2 }
         # { true #Equals #gas(V1) >=Int V2 }
-        inf_gas_pattern_1 = mlEqualsTrue(KApply('_<=Int_', [KVariable('V1'), KEVM.inf_gas(KVariable('V2'))]))
-        if inf_gas_pattern_1.match(constraint):
-            return mlTop()
-        inf_gas_pattern_2 = mlEqualsTrue(KApply('_<Int_', [KEVM.inf_gas(KVariable('V1')), KVariable('V2')]))
-        if inf_gas_pattern_2.match(constraint):
+        inf_gas_patterns = (
+            (KApply('_<=Int_', [KVariable('V1'), KEVM.inf_gas(KVariable('V2'))]), mlTop()),
+            (KApply('_<Int_', [KEVM.inf_gas(KVariable('V1')), KVariable('V2')]), mlBottom()),
+            (KApply('_>=Int_', [KEVM.inf_gas(KVariable('V1')), KVariable('V2')]), mlTop()),
+        )
+        for ig_pat, res in inf_gas_patterns:
+            if mlEqualsTrue(ig_pat).match(constraint):
+                return res
+
+        if c_match := mlEqualsTrue(KVariable('B')).match(constraint):
+            _constraint = c_match['B']
+            if len(list(free_vars(_constraint))) == 0:
+                _new_constraint = self.simplify_concrete(_constraint)
+                if _new_constraint is not None:
+                    _LOGGER.info(
+                        f'Simplified constraint with concrete solver: {self.pretty_print(KRewrite(_constraint, _new_constraint))}'
+                    )
+                    constraint = mlEqualsTrue(_new_constraint)
+
+        if constraint == mlEqualsTrue(FALSE):
             return mlBottom()
-        inf_gas_pattern_3 = mlEqualsTrue(KApply('_>=Int_', [KEVM.inf_gas(KVariable('V1')), KVariable('V2')]))
-        if inf_gas_pattern_3.match(constraint):
+
+        if constraint == mlEqualsTrue(TRUE):
             return mlTop()
-
-        # { true #Equals #sizeWordStack(WS) <=Int 1024 }
-        word_stack_size_pattern = mlEqualsTrue(
-            KApply('_<=Int_', [KApply('#sizeWordStack(_)_EVM-TYPES_Int_WordStack', [KVariable('WS')]), intToken(1024)])
-        )
-        if ws_match := word_stack_size_pattern.match(constraint):
-            wsitems = KEVM.wordstack_items(ws_match['WS'])
-            if len(wsitems) > 0 and wsitems[-1] == KEVM.wordstack_empty():
-                ws_len = len(wsitems) - 1
-                return mlTop() if ws_len <= 1024 else mlBottom()
-
-        # { true #Equals #stackOverflow(WS, OP) }
-        # { true #Equals #stackUnderflow(WS, OP) }
-        # { true #Equals notBool (#stackUnderflow(WS, OP) orBool #stackOverflow(WS, OP)) }
-        stack_overflow_pattern = KApply(
-            '#stackOverflow(_,_)_EVM_Bool_WordStack_OpCode', [KVariable('WS'), KVariable('OP')]
-        )
-        stack_underflow_pattern = KApply(
-            '#stackUnderflow(_,_)_EVM_Bool_WordStack_OpCode', [KVariable('WS'), KVariable('OP')]
-        )
-        stack_overflow_constraint_pattern = mlEqualsTrue(stack_overflow_pattern)
-        if socp_match := stack_overflow_constraint_pattern.match(constraint):
-            wsitems = KEVM.wordstack_items(socp_match['WS'])
-            if len(wsitems) > 0 and wsitems[-1] == KEVM.wordstack_empty():
-                ws_len = len(wsitems) - 1
-                if ws_len < 1024:
-                    return mlBottom()
-        stack_underflow_constraint_pattern = mlEqualsTrue(stack_underflow_pattern)
-        if socp_match := stack_underflow_constraint_pattern.match(constraint):
-            wsitems = KEVM.wordstack_items(socp_match['WS'])
-            if len(wsitems) > 0 and wsitems[-1] == KEVM.wordstack_empty():
-                ws_len = len(wsitems) - 1
-                stack_needed = KEVM.stack_needed(socp_match['OP'])
-                if stack_needed is not None and stack_needed <= ws_len:
-                    return mlBottom()
-        stack_fine_constraint_pattern = mlEqualsTrue(
-            notBool(orBool([stack_underflow_constraint_pattern, stack_overflow_constraint_pattern]))
-        )
-        if sfcp_match := stack_fine_constraint_pattern.match(constraint):
-            wsitems = KEVM.wordstack_items(sfcp_match['WS'])
-            if len(wsitems) > 0 and wsitems[-1] == KEVM.wordstack_empty():
-                ws_len = len(wsitems) - 1
-                stack_needed = KEVM.stack_needed(sfcp_match['OP'])
-                if ws_len < 1024 and stack_needed is not None and stack_needed <= ws_len:
-                    return mlTop()
-
-        # { true #Equals V1 >Int V2 }
-        # { true #Equals V1 >=Int V2 }
-        # { true #Equals V1 <Int V2 }
-        # { true #Equals V1 <=Int V2 }
-        # { true #Equals V1 ==Int V2 }
-        # { true #Equals V1 =/=Int V2 }
-        diseq_labels = ['_>Int_', '_>=Int_', '_<Int_', '_<=Int_', '_==Int_', '_=/=Int_']
-        for diseq in diseq_labels:
-            diseq_pattern = mlEqualsTrue(KApply(diseq, [KVariable('V1'), KVariable('V2')]))
-            if iss := diseq_pattern.match(constraint):
-                constraint = mlEqualsTrue(KApply(diseq, [self.simplify_int(iss['V1']), self.simplify_int(iss['V2'])]))
-
-        # { true #Equals V1 >=Int #sizeByteArray(V2) }
-        # { true #Equals V1 <Int #sizeByteArray(V2) }
-        concrete_bytearray_size_pattern = mlEqualsTrue(
-            KApply('_>=Int_', [KVariable('V1'), KEVM.size_bytearray(KVariable('V2'))])
-        )
-        if cbsp_match := concrete_bytearray_size_pattern.match(constraint):
-            if self._current_schedule and self.opcode_lookup(
-                cbsp_match['V2'], cbsp_match['V1'], self._current_schedule
-            ):
-                return mlBottom()
-            return mlEqualsTrue(KApply('_>=Int_', [cbsp_match['V1'], KEVM.size_bytearray(cbsp_match['V2'])]))
-        concrete_bytearray_size_pattern = mlEqualsTrue(
-            KApply('_<Int_', [KVariable('V1'), KEVM.size_bytearray(KVariable('V2'))])
-        )
-        if cbsp_match := concrete_bytearray_size_pattern.match(constraint):
-            if self._current_schedule and self.opcode_lookup(
-                cbsp_match['V2'], cbsp_match['V1'], self._current_schedule
-            ):
-                return mlTop()
-            return mlEqualsTrue(KApply('_<Int_', [cbsp_match['V1'], KEVM.size_bytearray(cbsp_match['V2'])]))
-
-        # { true #Equals isAddr1Op(OP) }
-        # { true #Equals isAddr2Op(OP) }
-        # { true #Equals notBool (isAddr1Op(OP) orBool isAddr2Op(OP)) }
-        addr1_op_pattern = mlEqualsTrue(KApply('isAddr1Op(_)_EVM_Bool_OpCode', [KVariable('OP')]))
-        if aop_match := addr1_op_pattern.match(constraint):
-            return mlTop() if KEVM.is_addr1_op(aop_match['OP']) else mlBottom()
-        addr2_op_pattern = mlEqualsTrue(KApply('isAddr2Op(_)_EVM_Bool_OpCode', [KVariable('OP')]))
-        if aop_match := addr2_op_pattern.match(constraint):
-            return mlTop() if KEVM.is_addr2_op(aop_match['OP']) else mlBottom()
-        not_addr_op_pattern = mlEqualsTrue(
-            notBool(
-                orBool(
-                    [
-                        KApply('isAddr1Op(_)_EVM_Bool_OpCode', [KVariable('OP')]),
-                        KApply('isAddr2Op(_)_EVM_Bool_OpCode', [KVariable('OP')]),
-                    ]
-                )
-            )
-        )
-        if aop_match := not_addr_op_pattern.match(constraint):
-            return (
-                mlTop() if not (KEVM.is_addr1_op(aop_match['OP']) or KEVM.is_addr2_op(aop_match['OP'])) else mlBottom()
-            )
-
-        # { true #Equals Ghasaccesslist << SCHED >> }
-        # { true #Equals notBool Ghasaccesslist << SCHED >> }
-        has_access_list = KApply(
-            '_<<_>>_EVM_Bool_ScheduleFlag_Schedule', [KApply('Ghasaccesslist_EVM_ScheduleFlag'), KVariable('SCHED')]
-        )
-        has_access_list_pattern = mlEqualsTrue(has_access_list)
-        if halp_match := has_access_list_pattern.match(constraint):
-            if halp_match and type(halp_match['SCHED']) is KApply:
-                return mlTop() if KEVM.has_access_list(halp_match['SCHED']) else mlBottom()
-        no_has_access_list_pattern = mlEqualsTrue(notBool(has_access_list))
-        if nhalp_match := no_has_access_list_pattern.match(constraint):
-            if nhalp_match and type(nhalp_match['SCHED']) is KApply:
-                return mlTop() if not KEVM.has_access_list(nhalp_match['SCHED']) else mlBottom()
-
-        # { true #Equals #usesMemory(OP) }
-        # { true #Equals notBool #usesMemory(OP) }
-        uses_memory_pattern = mlEqualsTrue(KApply('#usesMemory(_)_EVM_Bool_OpCode', [KVariable('OP')]))
-        if ump_match := uses_memory_pattern.match(constraint):
-            return mlTop() if KEVM.uses_memory(ump_match['OP']) else mlBottom()
-        not_uses_memory_pattern = mlEqualsTrue(notBool(KApply('#usesMemory(_)_EVM_Bool_OpCode', [KVariable('OP')])))
-        if nump_match := not_uses_memory_pattern.match(constraint):
-            return mlTop() if not KEVM.uses_memory(nump_match['OP']) else mlBottom()
-
-        # { true #Equals I in S }
-        # { true #Equals notBool I in S }
-        set_access_pattern = KApply('Set:in', [KVariable('I'), KVariable('S')])
-        set_present_pattern = mlEqualsTrue(set_access_pattern)
-        if spp_match := set_present_pattern.match(constraint):
-            if (
-                type(spp_match['I']) is KToken
-                and type(spp_match['S']) is KApply
-                and spp_match['S'].label.name == '_Set_'
-            ):
-                i = spp_match['I']
-                s = [si.args[0] for si in flatten_label('_Set_', spp_match['S']) if type(si) is KApply and si.arity > 0]
-                if i in s:
-                    return mlTop()
-        set_absent_pattern = mlEqualsTrue(notBool(set_access_pattern))
-        if spp_match := set_absent_pattern.match(constraint):
-            if (
-                type(spp_match['I']) is KToken
-                and type(spp_match['S']) is KApply
-                and spp_match['S'].label.name == '_Set_'
-            ):
-                i = spp_match['I']
-                s = [si.args[0] for si in flatten_label('_Set_', spp_match['S']) if type(si) is KApply and si.arity > 0]
-                if i in s:
-                    return mlBottom()
-
-        # { true #Equals X ==Int Y }
-        # { true #Equals X =/=Int Y }
-        equality_pattern = mlEqualsTrue(KApply('_==Int_', [KVariable('I1'), KVariable('I2')]))
-        disequality_pattern = mlEqualsTrue(KApply('_=/=Int_', [KVariable('I1'), KVariable('I2')]))
-        if ep_match := equality_pattern.match(constraint):
-            if type(ep_match['I1']) is KToken and type(ep_match['I2']) is KToken:
-                i1 = int(ep_match['I1'].token)
-                i2 = int(ep_match['I2'].token)
-                return mlTop() if i1 == i2 else mlBottom()
-        if dep_match := disequality_pattern.match(constraint):
-            if type(dep_match['I1']) is KToken and type(dep_match['I2']) is KToken:
-                i1 = int(dep_match['I1'].token)
-                i2 = int(dep_match['I2'].token)
-                return mlBottom() if i1 == i2 else mlTop()
 
         return constraint
 
