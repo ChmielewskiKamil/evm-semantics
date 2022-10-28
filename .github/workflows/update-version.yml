@@ -4,7 +4,11 @@ on:
     branches:
       - '_update-deps_runtimeverification_k'
       - '_update-deps_runtimeverification_blockchain-k-plugin'
+<<<<<<< HEAD
       - 'update-pyk'
+=======
+      - '_update-deps_runtimeverification_pyk'
+>>>>>>> upstream/master
   workflow_dispatch:
 # Stop in progress workflows on the same branch and same workflow to use latest committed code
 concurrency:
@@ -39,6 +43,7 @@ jobs:
           poetry --version
           pyk_version="$(cat deps/pyk_release)"
           sed -i 's!pyk = { git = "https://github.com/runtimeverification/pyk.git", tag="[v0-9\.]*" }!pyk = { git = "https://github.com/runtimeverification/pyk.git", tag="'${pyk_version}'" }!' kevm-pyk/pyproject.toml
+          sed -i 's!    pyk.url = "github:runtimeverification/pyk/[v0-9\.]*"!    pyk.url = "github:runtimeverification/pyk/'"${pyk_version}"'"!' flake.nix
           cd kevm-pyk
           poetry update
           cd -
