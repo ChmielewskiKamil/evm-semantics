@@ -362,11 +362,10 @@ class KEVM(KProve, KRun):
         for priority, lhs, rhs in rules:
             # TODO: needs to be unify_with_constraint instead
             # TODO: or needs to have routine "does not unify" for other rules
-            rule_match = lhs.match_with_constraint(cterm)
+            rule_match = lhs.config.match(cterm.config)
             if rule_match:
                 # TODO: CTerm.match_with_constraint should return a Subst
-                _subst, constraint = rule_match
-                subst = Subst(_subst)
+                subst = Subst(rule_match)
                 new_config = subst(rhs.config)
                 new_constraints = [
                     self.simplify_constraint(subst(c)) for c in list(lhs.constraints) + list(rhs.constraints)
