@@ -288,7 +288,42 @@ class KEVM(KProve, KRun):
         self._current_schedule = sched_cell
         self.add_opcode_table(program_cell, sched_cell)
 
-    def simplify(self, cterm: CTerm) -> Optional[CTerm]:
+    def hardcoded_step(self, cterm: CTerm) -> Optional[CTerm]:
+        _index = self.rule_index(cterm)
+        if _index is None or self.rule_index(cterm) != '#exec[_]_EVM_InternalOp_OpCode':
+            return None
+
+        config, *constraints = cterm
+        empty_config, subst = split_config_from(config)
+
+        # <k> #exec [ OP ] ~> REST </k> <wordStack> WS </wordStack>
+        k_pattern = KSequence([KApply('#exec[_]_EVM_InternalOp_OpCode', [KVariable('OP')]), KVariable('REST')])
+        wordstack_items = KEVM.wordstack_items(subst['WORDSTACK_CELL'])
+        if len(wordstack_items) > 0 and wordstack_items[-1] == KEVM.wordstack_empty():
+            if kp_match := k_pattern.match(subst['K_CELL']):
+                op = kp_match['OP']
+                rest = kp_match['REST']
+                if type(op) is KApply:
+                    if op.label.name.endswith('NullStackOp'):
+                        subst['K_CELL'] = KSequence([KEVM.gas_op(op, op), op, rest])
+                        return CTerm(Subst(subst)(mlAnd([empty_config] + constraints)))
+                    else:
+                        opp_array = [
+                            ('UnStackOp', 1, '___EVM_InternalOp_UnStackOp_Int'),
+                            ('BinStackOp', 2, '____EVM_InternalOp_BinStackOp_Int_Int'),
+                            ('TernStackOp', 3, '____EVM_InternalOp_TernStackOp_Int_Int_Int'),
+                            ('QuadStackOp', 4, '____EVM_InternalOp_QuadStackOp_Int_Int_Int_Int'),
+                        ]
+                        for suffix, n_items, label in opp_array:
+                            if op.label.name.endswith(suffix) and len(wordstack_items) >= n_items:
+                                new_op = KApply(label, [op] + wordstack_items[0:n_items])
+                                subst['WORDSTACK_CELL'] = KEVM.wordstack(wordstack_items[n_items:-1])
+                                subst['K_CELL'] = KSequence([KEVM.gas_op(op, new_op), new_op, rest])
+                                return CTerm(Subst(subst)(mlAnd([empty_config] + constraints)))
+
+        return None
+
+    def simplify(self, cterm: CTerm) -> CTerm:
         config, *constraints = cterm
         empty_config, subst = split_config_from(config)
 
@@ -309,29 +344,6 @@ class KEVM(KProve, KRun):
                 nop, _ = opcode_info
                 subst['K_CELL'] = KSequence([KEVM.next_op(nop), k_cell_match['REST']])
 
-        # <k> #exec [ OP ] ~> REST </k> <wordStack> WS </wordStack>
-        k_pattern = KSequence([KApply('#exec[_]_EVM_InternalOp_OpCode', [KVariable('OP')]), KVariable('REST')])
-        wordstack_items = KEVM.wordstack_items(subst['WORDSTACK_CELL'])
-        if len(wordstack_items) > 0 and wordstack_items[-1] == KEVM.wordstack_empty():
-            if kp_match := k_pattern.match(subst['K_CELL']):
-                op = kp_match['OP']
-                rest = kp_match['REST']
-                if type(op) is KApply:
-                    if op.label.name.endswith('NullStackOp'):
-                        subst['K_CELL'] = KSequence([KEVM.gas_op(op, op), op, rest])
-                    else:
-                        opp_array = [
-                            ('UnStackOp', 1, '___EVM_InternalOp_UnStackOp_Int'),
-                            ('BinStackOp', 2, '____EVM_InternalOp_BinStackOp_Int_Int'),
-                            ('TernStackOp', 3, '____EVM_InternalOp_TernStackOp_Int_Int_Int'),
-                            ('QuadStackOp', 4, '____EVM_InternalOp_QuadStackOp_Int_Int_Int_Int'),
-                        ]
-                        for suffix, n_items, label in opp_array:
-                            if op.label.name.endswith(suffix) and len(wordstack_items) >= n_items:
-                                new_op = KApply(label, [op] + wordstack_items[0:n_items])
-                                subst['WORDSTACK_CELL'] = KEVM.wordstack(wordstack_items[n_items:-1])
-                                subst['K_CELL'] = KSequence([KEVM.gas_op(op, new_op), new_op, rest])
-
         # <pc> PCOUNT </pc>
         subst['PC_CELL'] = self.simplify_int(subst['PC_CELL'])
 
@@ -341,16 +353,16 @@ class KEVM(KProve, KRun):
         return CTerm(mlAnd([Subst(subst)(empty_config)] + constraints))
 
     def rewrite_step(self, cterm: CTerm) -> Optional[CTerm]:
-        new_cterm = self.simplify(cterm)
-        if new_cterm is None:
-            return None
+        if result := self.hardcoded_step(cterm):
+            return result
+        cterm = self.simplify(cterm)
         next_cterms: List[Tuple[int, CTerm]] = []
-        rules = self.indexed_rules(new_cterm)
+        rules = self.indexed_rules(cterm)
         min_priority = 500
         for priority, lhs, rhs in rules:
             # TODO: needs to be unify_with_constraint instead
             # TODO: or needs to have routine "does not unify" for other rules
-            rule_match = lhs.match_with_constraint(new_cterm)
+            rule_match = lhs.match_with_constraint(cterm)
             if rule_match:
                 # TODO: CTerm.match_with_constraint should return a Subst
                 _subst, constraint = rule_match
@@ -361,10 +373,9 @@ class KEVM(KProve, KRun):
                 ]
                 if not any(map(is_bottom, new_constraints)):
                     next_cterm = self.simplify(CTerm(mlAnd([new_config] + new_constraints)))
-                    if next_cterm is not None:
-                        next_cterms.append((priority, next_cterm))
-                        if priority < min_priority:
-                            min_priority = priority
+                    next_cterms.append((priority, next_cterm))
+                    if priority < min_priority:
+                        min_priority = priority
         highest_priority = [ct for p, ct in next_cterms if p == min_priority]
         if len(highest_priority) < len(next_cterms):
             _LOGGER.warning(f'Discarding {len(next_cterms) - len(highest_priority)} lower priority states.')
