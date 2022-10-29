@@ -46,7 +46,7 @@ class KEVM(KProve, KRun):
     _rule_index: Optional[Dict[str, List[Tuple[int, CTerm, CTerm]]]]
     _opcode_lookup: Dict[Tuple[KInner, KInner], Dict[KInner, Tuple[KInner, int]]]
     _current_schedule: Optional[KInner]
-    _llvm_krun: KRun
+    _llvm_krun: Optional[KRun]
 
     def __init__(
         self,
@@ -61,8 +61,7 @@ class KEVM(KProve, KRun):
         KProve.__init__(self, definition_dir, use_directory=use_directory, main_file=main_file, profile=profile)
         KRun.__init__(self, definition_dir, use_directory=use_directory, profile=profile)
         KEVM._patch_symbol_table(self.symbol_table)
-        self._llvm_krun = KRun(self.definition_dir.parent / 'llvm', use_directory=use_directory, profile=profile)
-        KEVM._patch_symbol_table(self._llvm_krun.symbol_table)
+        self._llvm_krun = None
         self._crewrites = None
         self._crewrites_file = self.definition_dir / 'crewrites.json'
         self._rule_index = None
@@ -197,6 +196,11 @@ class KEVM(KProve, KRun):
         return None
 
     def simplify_concrete(self, i: KInner) -> Optional[KInner]:
+        if not self._llvm_krun:
+            self._llvm_krun = KRun(
+                self.definition_dir.parent / 'llvm', use_directory=self.use_directory, profile=self._profile
+            )
+            KEVM._patch_symbol_table(self._llvm_krun.symbol_table)
         run_args = [
             "-cSCHEDULE=LblLONDON'Unds'EVM{}()",
             '-pSCHEDULE=cat',
