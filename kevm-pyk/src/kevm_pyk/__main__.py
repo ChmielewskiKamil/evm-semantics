@@ -222,7 +222,6 @@ def exec_foundry_kompile(
             profile=profile,
             debug=debug,
             ccopts=ccopts,
-            llvm_kompile=llvm_kompile,
         )
 
 
