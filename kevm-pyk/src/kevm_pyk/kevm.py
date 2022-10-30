@@ -209,9 +209,14 @@ class KEVM(KProve, KRun):
             '-cCHAINID=\\dv{SortInt{}}("1")',
             '-pCHAINID=cat',
         ]
-        result = self._llvm_krun.run_kore(
-            KApply('simplify__FOUNDRY_EthereumSimulation_Result', [i]), args=run_args, expand_macros=False, depth=1
-        )
+        try:
+            result = self._llvm_krun.run_kore(
+                KApply('simplify__FOUNDRY_EthereumSimulation_Result', [i]), args=run_args, expand_macros=False, depth=1
+            )
+        except Exception:
+            result = self._llvm_krun.run(
+                KApply('simplify__FOUNDRY_EthereumSimulation_Result', [i]), args=run_args, expand_macros=False, depth=1
+            )
         k_cell = get_cell(result.config, 'K_CELL')
         if type(k_cell) is KSequence and k_cell.arity > 0:
             k_cell = k_cell.items[0]
