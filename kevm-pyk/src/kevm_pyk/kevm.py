@@ -47,6 +47,7 @@ class KEVM(KProve, KRun):
     _opcode_lookup: Dict[Tuple[KInner, KInner], Dict[KInner, Tuple[KInner, int]]]
     _current_schedule: Optional[KInner]
     _llvm_krun: Optional[KRun]
+    _constructors: List[KLabel]
 
     def __init__(
         self,
@@ -67,6 +68,7 @@ class KEVM(KProve, KRun):
         self._rule_index = None
         self._opcode_lookup = {}
         self._current_schedule = None
+        self._constructors = [prod.klabel for prod in self.definition.constructors if prod.klabel]
 
     @property
     def crewrites(self) -> List[Tuple[int, CTerm, CTerm]]:
@@ -101,17 +103,20 @@ class KEVM(KProve, KRun):
         self.crewrites
         _LOGGER.info('Computing rule index.')
         for priority, lhs, rhs in self.crewrites:
-            index = KEVM.rule_index(lhs)
+            index = self.rule_index(lhs)
             if index is not None:
                 if index not in self._rule_index:
                     self._rule_index[index] = []
                 self._rule_index[index].append((priority, lhs, rhs))
 
-    @staticmethod
-    def rule_index(cterm: CTerm) -> Optional[str]:
+    def rule_index(self, cterm: CTerm) -> Optional[str]:
         k_cell = get_cell(cterm.config, 'K_CELL')
-        # TODO: Should also be checking that the klabel is a free constructor klabel
-        if type(k_cell) is KSequence and k_cell.arity > 0 and type(k_cell.items[0]) is KApply:
+        if (
+            type(k_cell) is KSequence
+            and k_cell.arity > 0
+            and type(k_cell.items[0]) is KApply
+            and k_cell.items[0].label in self._constructors
+        ):
             return k_cell.items[0].label.name
         return None
 
@@ -119,7 +124,7 @@ class KEVM(KProve, KRun):
         if not self._rule_index:
             self.compute_rule_index()
         if self._rule_index:
-            index = KEVM.rule_index(cterm)
+            index = self.rule_index(cterm)
             if index is not None and index in self._rule_index:
                 rules = self._rule_index[index]
                 _LOGGER.info(f'Rules found for index {index}: {len(rules)}')
