@@ -5,14 +5,17 @@ from subprocess import CalledProcessError
 from typing import Any, Dict, Final, Iterable, List, Optional
 
 from pyk.cli_utils import run_process
-from pyk.kast import KApply, KInner, KLabel, KSort, KToken, KVariable, build_assoc
+from pyk.cterm import CTerm
+from pyk.kast import KApply, KInner, KLabel, KSequence, KSort, KToken, KVariable, build_assoc
 from pyk.kastManip import flatten_label, get_cell
 from pyk.ktool import KProve, KRun
 from pyk.ktool.kompile import KompileBackend
 from pyk.ktool.kprint import paren
 from pyk.prelude.kbool import notBool
-from pyk.prelude.kint import intToken
+from pyk.prelude.kint import intToken, ltInt
+from pyk.prelude.ml import mlAnd, mlEqualsTrue
 from pyk.prelude.string import stringToken
+from pyk.utils import unique
 
 from .utils import add_include_arg
 
@@ -173,6 +176,57 @@ class KEVM(KProve, KRun):
             'SERIALIZATION.#newAddr',
             'SERIALIZATION.#newAddrCreate2',
         ]
+
+    @staticmethod
+    def add_invariant(cterm: CTerm) -> CTerm:
+        config, *constraints = cterm
+
+        word_stack = get_cell(config, 'WORDSTACK_CELL')
+        if type(word_stack) is not KVariable:
+            word_stack_items = flatten_label('_:__EVM-TYPES_WordStack_Int_WordStack', word_stack)
+            for i in word_stack_items[:-1]:
+                constraints.append(mlEqualsTrue(KEVM.range_uint(256, i)))
+
+        gas_cell = get_cell(config, 'GAS_CELL')
+        if not (type(gas_cell) is KApply and gas_cell.label.name == 'infGas'):
+            constraints.append(mlEqualsTrue(KEVM.range_uint(256, gas_cell)))
+        constraints.append(mlEqualsTrue(KEVM.range_address(get_cell(config, 'ID_CELL'))))
+        constraints.append(mlEqualsTrue(KEVM.range_address(get_cell(config, 'CALLER_CELL'))))
+        constraints.append(mlEqualsTrue(KEVM.range_address(get_cell(config, 'ORIGIN_CELL'))))
+        constraints.append(mlEqualsTrue(ltInt(KEVM.size_bytearray(get_cell(config, 'CALLDATA_CELL')), KEVM.pow256())))
+
+        return CTerm(mlAnd([config] + list(unique(constraints))))
+
+    @staticmethod
+    def extract_branches(cterm: CTerm) -> Iterable[KInner]:
+        config, *constraints = cterm
+        k_cell = get_cell(config, 'K_CELL')
+        jumpi_pattern = KEVM.jumpi_applied(KVariable('###PCOUNT'), KVariable('###COND'))
+        pc_next_pattern = KApply('#pc[_]_EVM_InternalOp_OpCode', [KEVM.jumpi()])
+        branch_pattern = KSequence([jumpi_pattern, pc_next_pattern, KEVM.execute(), KVariable('###CONTINUATION')])
+        if subst := branch_pattern.match(k_cell):
+            cond = subst['###COND']
+            if cond_subst := KEVM.bool_2_word(KVariable('###BOOL_2_WORD')).match(cond):
+                cond = cond_subst['###BOOL_2_WORD']
+            else:
+                cond = KApply('_==Int_', [cond, intToken(0)])
+            return [mlEqualsTrue(cond), mlEqualsTrue(KApply('notBool', [cond]))]
+        return []
+
+    @staticmethod
+    def is_terminal(cterm: CTerm) -> bool:
+        config, *_ = cterm
+        k_cell = get_cell(config, 'K_CELL')
+        # <k> #halt </k>
+        if k_cell == KEVM.halt():
+            return True
+        elif type(k_cell) is KSequence:
+            # <k> #halt ~> _ </k>
+            if k_cell and k_cell[0] == KEVM.halt():
+                # #Not (<k> #halt ~> #execute ~> _ </k>)
+                if len(k_cell) > 1 and k_cell[1] != KEVM.execute():
+                    return True
+        return False
 
     @staticmethod
     def halt() -> KApply:
