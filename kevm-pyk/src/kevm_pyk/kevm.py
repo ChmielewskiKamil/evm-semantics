@@ -111,14 +111,17 @@ class KEVM(KProve, KRun):
 
     def rule_index(self, cterm: CTerm) -> Optional[str]:
         k_cell = get_cell(cterm.config, 'K_CELL')
-        if (
-            type(k_cell) is KSequence
-            and k_cell.arity > 0
-            and type(k_cell.items[0]) is KApply
-            and k_cell.items[0].label in self._constructors
-        ):
-            return k_cell.items[0].label.name
-        return None
+        rule_index = None
+        if type(k_cell) is KSequence and k_cell.arity > 0:
+            kitem_0 = k_cell.items[0]
+            if type(kitem_0) is KApply and kitem_0.label in self._constructors:
+                rule_index = kitem_0.label.name
+                if rule_index == '#gasExec(_,_)_EVM_InternalOp_Schedule_OpCode':
+                    if type(kitem_0.args[1]) is KApply and kitem_0.args[1].label in self._constructors:
+                        rule_index = rule_index + '#####' + kitem_0.args[1].label.name
+            elif k_cell.arity > 1 and type(k_cell.items[1]) is KApply and k_cell.items[1].label in self._constructors:
+                rule_index = '-----' + k_cell.items[1].label.name
+        return rule_index
 
     def indexed_rules(self, cterm: CTerm) -> List[Tuple[int, CTerm, CTerm]]:
         if not self._rule_index:
