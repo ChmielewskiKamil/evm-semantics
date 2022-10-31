@@ -21,10 +21,12 @@ from pyk.kast import (
     KSort,
     KToken,
     KVariable,
+    KRewrite,
     Subst,
 )
-from pyk.kastManip import minimize_term
+from pyk.kastManip import minimize_term, push_down_rewrites
 from pyk.kcfg import KCFG
+from pyk.ktool.kit import KIT
 from pyk.ktool.kompile import KompileBackend
 from pyk.ktool.krun import _krun
 from pyk.prelude.kbool import FALSE
@@ -35,7 +37,7 @@ from pyk.utils import shorten_hashes
 from .gst_to_kore import gst_to_kore
 from .kevm import KEVM, Foundry
 from .solc_to_k import Contract, contract_to_main_module, method_to_cfg, solc_compile
-from .utils import KPrint_make_unparsing, add_include_arg
+from .utils import KCFG__replace_node, KPrint_make_unparsing, add_include_arg, sanitize_config
 
 T = TypeVar('T')
 
@@ -382,6 +384,7 @@ def exec_foundry_prove(
     workers: int = 1,
     minimize: bool = True,
     lemmas: Iterable[str] = (),
+    simplify_init: bool = True,
     **kwargs: Any,
 ) -> None:
     _ignore_arg(kwargs, 'main_module', f'--main-module: {kwargs["main_module"]}')
@@ -441,6 +444,19 @@ def exec_foundry_prove(
             method = [m for m in contract.methods if m.name == method_name][0]
             empty_config = foundry.definition.empty_config(Foundry.Sorts.FOUNDRY_CELL)
             cfg = method_to_cfg(empty_config, contract, method)
+            if simplify_init:
+                _LOGGER.info(f'Simplifying initial state for test: {test}')
+                edge = KCFG.Edge(cfg.get_unique_init(), cfg.get_unique_target(), mlTop(), -1)
+                claim = edge.to_claim()
+                init_simplified = foundry.prove_claim(claim, 'simplify-init', args=['--depth', '0'])
+                init_simplified = sanitize_config(foundry.definition, init_simplified)
+                cfg = KCFG__replace_node(cfg, cfg.get_unique_init().id, CTerm(init_simplified))
+                _LOGGER.info(f'Simplifying target state for test: {test}')
+                edge = KCFG.Edge(cfg.get_unique_target(), cfg.get_unique_init(), mlTop(), -1)
+                claim = edge.to_claim()
+                target_simplified = foundry.prove_claim(claim, 'simplify-target', args=['--depth', '0'])
+                target_simplified = sanitize_config(foundry.definition, target_simplified)
+                cfg = KCFG__replace_node(cfg, cfg.get_unique_target().id, CTerm(target_simplified))
             kcfgs[test] = (cfg, kcfg_file)
             with open(kcfg_file, 'w') as kf:
                 kf.write(json.dumps(cfg.to_dict()))
@@ -486,7 +502,7 @@ def exec_foundry_prove(
                     f'Target state reached at depth {depth}, inserted edge from {shorten_hashes((curr_node.id))} to {shorten_hashes((target_node.id))}.'
                 )
 
-            next_state = CTerm(result)
+            next_state = CTerm(sanitize_config(foundry.definition, result))
             next_node = cfg.get_or_create_node(next_state)
             if next_node != curr_node:
                 _LOGGER.info(f'Found basic block at depth {depth}: {shorten_hashes((curr_node.id, next_node.id))}.')
@@ -538,6 +554,8 @@ def exec_foundry_show_cfg(
     foundry_out: Path,
     test: str,
     nodes: Iterable[str] = (),
+    node_deltas: Iterable[Tuple[str, str]] = (),
+    minimize: bool = True,
     **kwargs: Any,
 ) -> None:
     definition_dir = foundry_out / 'kompiled'
@@ -549,10 +567,18 @@ def exec_foundry_show_cfg(
     with open(kcfg_file, 'r') as kf:
         kcfg = KCFG.from_dict(json.loads(kf.read()))
         list(map(print, kcfg.pretty(foundry)))
-    if nodes:
-        for node_id in nodes:
-            node = kcfg.node(node_id)
-            print(f'\n\nNode {node.id}:\n\n{foundry.pretty_print(minimize_term(node.cterm.kast))}\n')
+    for node_id in nodes:
+        kast = kcfg.node(node_id).cterm.kast
+        if minimize_term:
+            kast = minimize_term(kast)
+        print(f'\n\nNode {node_id}:\n\n{foundry.pretty_print(kast)}\n')
+    for node_id_1, node_id_2 in node_deltas:
+        config_1 = kcfg.node(node_id_1).cterm.config
+        config_2 = kcfg.node(node_id_2).cterm.config
+        config_delta = push_down_rewrites(KRewrite(config_1, config_2))
+        if minimize:
+            config_delta = minimize_term(config_delta)
+        print(f'\n\nState Delta {node_id_1} => {node_id_2}:\n\n{foundry.pretty_print(config_delta)}\n')
 
 
 def exec_run(
@@ -835,6 +861,19 @@ def _create_argument_parser() -> ArgumentParser:
         type=int,
         help='Store every Nth state in the KCFG for inspection.',
     )
+    foundry_prove_args.add_argument(
+        '--simplify-init',
+        dest='simplify_init',
+        default=True,
+        action='store_true',
+        help='Simplify the initial and target states at startup.',
+    )
+    foundry_prove_args.add_argument(
+        '--no-simplify-init',
+        dest='simplify_init',
+        action='store_false',
+        help='Do not simplify the initial and target states at startup.',
+    )
 
     foundry_show_cfg_args = command_parser.add_parser(
         'foundry-show-cfg',
@@ -850,6 +889,20 @@ def _create_argument_parser() -> ArgumentParser:
         default=[],
         action='append',
         help='List of nodes to display as well.',
+    )
+    foundry_show_cfg_args.add_argument(
+        '--node-delta',
+        type=KIT.arg_pair_of(str, str),
+        dest='node_deltas',
+        default=[],
+        action='append',
+        help='List of nodes to display delta for.',
+    )
+    foundry_show_cfg_args.add_argument(
+        '--minimize', dest='minimize', default=True, action='store_true', help='Minimize output.'
+    )
+    foundry_show_cfg_args.add_argument(
+        '--no-minimize', dest='minimize', action='store_false', help='Do not minimize output.'
     )
 
     return parser
