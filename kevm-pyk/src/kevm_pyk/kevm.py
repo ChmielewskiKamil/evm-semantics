@@ -30,7 +30,7 @@ _LOGGER: Final = logging.getLogger(__name__)
 class KEVM(KProve, KRun):
     _crewrites: Optional[List[Tuple[int, CTerm, CTerm]]]
     _crewrites_file: Path
-    _rule_index: Optional[Callable[[CTerm], List[Tuple[CTerm, CTerm]]]]
+    _rule_index: Optional[Callable[[CTerm], List[Tuple[int, CTerm, CTerm]]]]
     _opcode_lookup: Dict[KInner, Dict[KInner, Tuple[KInner, int]]]
 
     def __init__(
@@ -52,19 +52,19 @@ class KEVM(KProve, KRun):
         self._opcode_lookup = {}
 
     @property
-    def crewrites(self) -> List[Tuple[CTerm, CTerm]]:
+    def crewrites(self) -> List[Tuple[int, CTerm, CTerm]]:
         if not self._crewrites:
             if self._crewrites_file.exists():
                 _crewrites: List[Tuple[int, CTerm, CTerm]] = []
                 with open(self._crewrites_file, 'r') as crf:
                     for cr in json.loads(crf.read()):
-                        pri, lhs_json, rhs_json = cr
+                        priority, lhs_json, rhs_json = cr
                         lhs_kast = KAst.from_dict(lhs_json)
                         rhs_kast = KAst.from_dict(rhs_json)
-                        assert type(pri) is int
+                        assert type(priority) is int
                         assert isinstance(lhs_kast, KInner)
                         assert isinstance(rhs_kast, KInner)
-                        _crewrites.append((pri, CTerm(lhs_kast), CTerm(rhs_kast)))
+                        _crewrites.append((priority, CTerm(lhs_kast), CTerm(rhs_kast)))
                 self._crewrites = _crewrites
                 _LOGGER.info(f'Loaded crewrites: {self._crewrites_file}')
             else:
@@ -72,18 +72,18 @@ class KEVM(KProve, KRun):
                 self._crewrites = KDefinition__crewrites(self.definition)
                 with open(self._crewrites_file, 'w') as crf:
                     json_crewrites = []
-                    for pri, lhs, rhs in self._crewrites:
-                        json_crewrite = [pri, lhs.kast.to_dict(), rhs.kast.to_dict()]
+                    for priority, lhs, rhs in self._crewrites:
+                        json_crewrite = [priority, lhs.kast.to_dict(), rhs.kast.to_dict()]
                         json_crewrites.append(json_crewrite)
                     crf.write(json.dumps(json_crewrites))
                     _LOGGER.info(f'Recorded crewrites: {self._crewrites_file}')
-        return [(lhs, rhs) for _, lhs, rhs in self._crewrites]
+        return self._crewrites
 
     @property
-    def rule_index(self) -> Callable[[CTerm], List[Tuple[CTerm, CTerm]]]:
+    def rule_index(self) -> Callable[[CTerm], List[Tuple[int, CTerm, CTerm]]]:
         if not self._rule_index:
 
-            def __rule_index(_cterm: CTerm) -> List[Tuple[CTerm, CTerm]]:
+            def __rule_index(_cterm: CTerm) -> List[Tuple[int, CTerm, CTerm]]:
                 return self.crewrites
 
             self._rule_index = __rule_index
@@ -196,7 +196,7 @@ class KEVM(KProve, KRun):
         next_cterms: List[CTerm] = []
         rules = self.rule_index(cterm)
         _LOGGER.info(f'Rules found for index: {len(rules)}')
-        for lhs, rhs in rules:
+        for _, lhs, rhs in rules:
             # TODO: needs to be unify_with_constraint instead
             # TODO: or needs to have routine "does not unify" for other rules
             rule_match = lhs.match_with_constraint(cterm)
