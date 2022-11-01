@@ -19,7 +19,7 @@ from pyk.prelude.ml import mlAnd, mlEqualsTrue
 from pyk.prelude.string import stringToken
 from pyk.utils import unique
 
-from .utils import KDefinition__crewrites, add_include_arg, check_implication
+from .utils import KDefinition__crewrites, add_include_arg
 
 _LOGGER: Final = logging.getLogger(__name__)
 
@@ -162,24 +162,9 @@ class KEVM(KProve, KRun):
         rules = self.rule_index(cterm)
         _LOGGER.info(f'Rules found for index: {len(rules)}')
         for lhs, rhs in rules:
-            k_cell = _cterm_subst['K_CELL']
-            rule_k_cell = get_cell(lhs.config, 'K_CELL')
             # TODO: needs to be unify_with_constraint instead
             # TODO: or needs to have routine "does not unify" for other rules
-            match = lhs.config.match(cterm.config)
             rule_match = lhs.match_with_constraint(cterm)
-            if type(rule_k_cell) is KSequence and type(rule_k_cell.items[0]) is KApply:
-                if type(k_cell) is KSequence and type(k_cell.items[0]) is KApply:
-                    if rule_k_cell.items[0].match(k_cell.items[0]):
-                        _, err = check_implication(self, cterm, lhs)
-                        _LOGGER.info(
-                            'Rule:\n'
-                            f'{self.pretty_print(k_cell)}\n'
-                            f'{self.pretty_print(rule_k_cell)}\n'
-                            f'{rule_match}\n'
-                            f'{match}\n'
-                            f'{err}\n'
-                        )
             if rule_match:
                 # TODO: CTerm.match_with_constraint should return a Subst
                 _subst, constraint = rule_match
