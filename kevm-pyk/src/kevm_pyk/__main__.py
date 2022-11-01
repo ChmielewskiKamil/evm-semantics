@@ -502,35 +502,37 @@ def exec_foundry_prove(
                     f'Target state reached at depth {depth}, inserted edge from {shorten_hashes((curr_node.id))} to {shorten_hashes((target_node.id))}.'
                 )
 
-            next_state = CTerm(sanitize_config(foundry.definition, result))
-            next_node = cfg.get_or_create_node(next_state)
-            if next_node != curr_node:
-                _LOGGER.info(f'Found basic block at depth {depth}: {shorten_hashes((curr_node.id, next_node.id))}.')
-                cfg.create_edge(curr_node.id, next_node.id, mlTop(), depth)
+            else:
+                next_state = CTerm(sanitize_config(foundry.definition, result))
+                next_node = cfg.get_or_create_node(next_state)
+                if next_node != curr_node:
+                    _LOGGER.info(f'Found basic block at depth {depth}: {shorten_hashes((curr_node.id, next_node.id))}.')
+                    cfg.create_edge(curr_node.id, next_node.id, mlTop(), depth)
 
-            if KEVM.is_terminal(next_node.cterm):
-                cfg.add_expanded(next_node.id)
-                failure_nodes.append(next_node.id)
-                _LOGGER.info(f'Terminal node: {shorten_hashes((curr_node.id))}.')
+                if KEVM.is_terminal(next_node.cterm):
+                    cfg.add_expanded(next_node.id)
+                    failure_nodes.append(next_node.id)
+                    _LOGGER.info(f'Terminal node: {shorten_hashes((curr_node.id))}.')
 
-            elif branching:
-                branches = KEVM.extract_branches(next_state)
-                if not branches:
-                    raise ValueError(
-                        f'Could not extract branch condition:\n{foundry.pretty_print(minimize_term(result))}'
+                elif branching:
+                    branches = KEVM.extract_branches(next_state)
+                    if not branches:
+                        raise ValueError(
+                            f'Could not extract branch condition:\n{foundry.pretty_print(minimize_term(result))}'
+                        )
+                    cfg.add_expanded(next_node.id)
+                    _LOGGER.info(
+                        f'Found {len(list(branches))} branches at depth {depth}: {[foundry.pretty_print(b) for b in branches]}'
                     )
-                cfg.add_expanded(next_node.id)
-                _LOGGER.info(
-                    f'Found {len(list(branches))} branches at depth {depth}: {[foundry.pretty_print(b) for b in branches]}'
-                )
-                for branch in branches:
-                    branch_cterm = next_state.add_constraint(branch)
-                    branch_node = cfg.get_or_create_node(branch_cterm)
-                    cfg.create_edge(next_node.id, branch_node.id, branch, 0)
-                    _LOGGER.info(f'Made split: {shorten_hashes((next_node.id, branch_node.id))}')
-                    # TODO: have to store case splits as rewrites because of how frontier is handled for covers
-                    # cfg.create_cover(branch_node.id, next_node.id)
-                    # _LOGGER.info(f'Made cover: {shorten_hashes((branch_node.id, next_node.id))}')
+                    for branch in branches:
+                        branch_cterm = next_state.add_constraint(branch)
+                        branch_node = cfg.get_or_create_node(branch_cterm)
+                        cfg.create_edge(next_node.id, branch_node.id, branch, 0)
+                        _LOGGER.info(f'Made split: {shorten_hashes((next_node.id, branch_node.id))}')
+                        # TODO: have to store case splits as rewrites because of how frontier is handled for covers
+                        # cfg.create_cover(branch_node.id, next_node.id)
+                        # _LOGGER.info(f'Made cover: {shorten_hashes((branch_node.id, next_node.id))}')
+
             _write_cfg(cfg, cfgpath)
 
         if failure_nodes:
@@ -543,10 +545,14 @@ def exec_foundry_prove(
         results = process_pool.map(prove_it, kcfgs.items())
         process_pool.close()
 
-    failed_cfgs = [cid for ((cid, _), failed) in zip(kcfgs.items(), results) if failed]
-    if failed_cfgs:
-        print(f'Failed to prove KCFGs: {failed_cfgs}\n')
-    sys.exit(len(failed_cfgs))
+    failed = 0
+    for (cid, _), succeeded in zip(kcfgs.items(), results):
+        if succeeded:
+            print(f'PASSED: {cid}')
+        else:
+            print(f'FAILED: {cid}')
+            failed += 1
+    sys.exit(failed)
 
 
 def exec_foundry_show_cfg(
@@ -569,7 +575,7 @@ def exec_foundry_show_cfg(
         list(map(print, kcfg.pretty(foundry)))
     for node_id in nodes:
         kast = kcfg.node(node_id).cterm.kast
-        if minimize_term:
+        if minimize:
             kast = minimize_term(kast)
         print(f'\n\nNode {node_id}:\n\n{foundry.pretty_print(kast)}\n')
     for node_id_1, node_id_2 in node_deltas:
