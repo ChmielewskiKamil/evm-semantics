@@ -587,7 +587,7 @@ class KEVM(KProve, KRun):
         k_cell = get_cell(config, 'K_CELL')
         jumpi_pattern = KEVM.jumpi_applied(KVariable('###PCOUNT'), KVariable('###COND'))
         pc_next_pattern = KApply('#pc[_]_EVM_InternalOp_OpCode', [KEVM.jumpi()])
-        branch_pattern = KSequence([jumpi_pattern, pc_next_pattern, KEVM.execute(), KVariable('###CONTINUATION')])
+        branch_pattern = KSequence([jumpi_pattern, pc_next_pattern, KEVM.sharp_execute(), KVariable('###CONTINUATION')])
         if subst := branch_pattern.match(k_cell):
             cond = subst['###COND']
             if cond_subst := KEVM.bool_2_word(KVariable('###BOOL_2_WORD')).match(cond):
@@ -608,7 +608,7 @@ class KEVM(KProve, KRun):
             # <k> #halt ~> _ </k>
             if k_cell and k_cell[0] == KEVM.halt():
                 # #Not (<k> #halt ~> #execute ~> _ </k>)
-                if len(k_cell) > 1 and k_cell[1] != KEVM.execute():
+                if len(k_cell) > 1 and k_cell[1] != KEVM.sharp_execute():
                     return True
         return False
 
@@ -617,7 +617,7 @@ class KEVM(KProve, KRun):
         return KApply('#halt_EVM_KItem')
 
     @staticmethod
-    def execute() -> KApply:
+    def sharp_execute() -> KApply:
         return KApply('#execute_EVM_KItem')
 
     @staticmethod

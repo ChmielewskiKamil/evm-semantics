@@ -275,7 +275,7 @@ def exec_act_to_k(
     )
     init_subst = {
         'SCHEDULE_CELL': KApply('LONDON_EVM'),
-        'K_CELL': KEVM.execute(),
+        'K_CELL': KEVM.sharp_execute(),
         'MODE_CELL': KApply('NORMAL'),
         'CALLDATA_CELL': KEVM.abi_calldata(function_name, []),
         # 'CALLVALUE_CELL': KVariable('CALLVALUE_CELL'),
