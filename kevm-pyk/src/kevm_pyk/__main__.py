@@ -536,9 +536,10 @@ def exec_foundry_prove(
             _write_cfg(cfg, cfgpath)
 
         if failure_nodes:
-            _LOGGER.error(f'Failure nodes: {shorten_hashes(failure_nodes)}')
+            _LOGGER.error(f'Proof failed: {cfgid}')
             return False
 
+        _LOGGER.info(f'Proof passed: {cfgid}')
         return True
 
     with ProcessPool(ncpus=workers) as process_pool:
