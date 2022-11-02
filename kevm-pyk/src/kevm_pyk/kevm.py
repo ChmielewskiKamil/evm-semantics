@@ -28,6 +28,7 @@ _LOGGER: Final = logging.getLogger(__name__)
 class KEVM(KProve, KRun):
     semantic_rules: List[KRule]
     _rule_index: Optional[Callable[[CTerm], List[KRule]]]
+    _opcode_lookup: Dict[KInner, Dict[KInner, Tuple[KInner, int]]]
 
     def __init__(
         self,
@@ -44,6 +45,7 @@ class KEVM(KProve, KRun):
         KEVM._patch_symbol_table(self.symbol_table)
         self.semantic_rules = KDefinition__semantic_rules(self.definition)
         self._rule_index = None
+        self._opcode_lookup = {}
 
     @property
     def rule_index(self) -> Callable[[CTerm], List[KRule]]:
@@ -54,6 +56,47 @@ class KEVM(KProve, KRun):
 
             self._rule_index = __rule_index
         return self._rule_index
+
+    @staticmethod
+    def opcode_map_to_dict(map: KInner) -> Dict[KInner, Tuple[KInner, int]]:
+        _dict = {}
+        for map_item in flatten_label('_Map_', map):
+            assert type(map_item) is KApply
+            assert map_item.label.name == '_|->_'
+            pcount = map_item.args[0]
+            opcode = map_item.args[1]
+            assert type(opcode) is KApply and opcode.label.name == 'opcode(_,_)_FOUNDRY_OpCodeResult_OpCode_Int'
+            opcode_val = opcode.args[0]
+            opcode_width = opcode.args[1]
+            assert type(opcode_width) is KToken
+            _dict[pcount] = (opcode_val, int(opcode_width.token))
+        return _dict
+
+    def opcode_lookup(self, program: KInner, pcount: KInner, schedule: KInner) -> Optional[Tuple[KInner, int]]:
+        if program not in self._opcode_lookup:
+            _LOGGER.info(f'Computing bytecode disassembly: {self.pretty_print(program)}')
+            lookup_evm_pgm = KApply('dasm_program___FOUNDRY_EthereumSimulation_ByteArray_Schedule', [program, schedule])
+            run_args = [
+                "-cSCHEDULE=LblLONDON'Unds'EVM{}()",
+                '-pSCHEDULE=cat',
+                '-cMODE=LblNORMAL{}()',
+                '-pMODE=cat',
+                '-cCHAINID=\\dv{SortInt{}}("1")',
+                '-pCHAINID=cat',
+                '--no-expand-macros',
+            ]
+            result = self.run(lookup_evm_pgm, args=run_args)
+            k_cell = get_cell(result.config, 'K_CELL')
+            if type(k_cell) is KSequence and len(k_cell.items) > 0:
+                k_cell = k_cell.items[0]
+            if type(k_cell) is KApply and k_cell.label.name == 'dasm_result__FOUNDRY_EthereumSimulation_Map':
+                self._opcode_lookup[program] = KEVM.opcode_map_to_dict(k_cell.args[0])
+            _LOGGER.info(f'result: {self._opcode_lookup[program]}')
+
+        if program in self._opcode_lookup and pcount in self._opcode_lookup[program]:
+            return self._opcode_lookup[program][pcount]
+
+        return None
 
     def rewrite_step(self, cterm: CTerm) -> Optional[CTerm]:
         next_cterms: List[CTerm] = []
