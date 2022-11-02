@@ -718,7 +718,7 @@ def _create_argument_parser() -> ArgumentParser:
     foundry_prove_args.add_argument(
         '--max-depth',
         dest='max_depth',
-        default=1000,
+        default=250,
         type=int,
         help='Store every Nth state in the KCFG for inspection.',
     )
@@ -732,7 +732,7 @@ def _create_argument_parser() -> ArgumentParser:
     foundry_prove_args.add_argument(
         '--simplify-init',
         dest='simplify_init',
-        default=False,
+        default=True,
         action='store_true',
         help='Simplify the initial and target states at startup.',
     )
