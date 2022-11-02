@@ -101,19 +101,9 @@ class KEVM(KProve, KRun):
     def rewrite_step(self, cterm: CTerm) -> Optional[CTerm]:
         next_cterms: List[CTerm] = []
         rules = self.rule_index(cterm)
-        _LOGGER.info(f'Found {len(rules)} rules in index.')
         for r in rules:
             rule_lhs = CTerm(mlAnd([extract_lhs(r.body), bool_to_ml_pred(r.requires)]))
             # TODO: needs to be unify_with_constraint instead
-            rule_k_cell = get_cell(rule_lhs.config, 'K_CELL')
-            term_k_cell = get_cell(cterm.config, 'K_CELL')
-            k_cell_match = rule_k_cell.match(term_k_cell)
-            _LOGGER.info(
-                'K Cell Match:\n'
-                f'Rule K Cell: {self.pretty_print(rule_k_cell)}\n'
-                f'Term K Cell: {self.pretty_print(term_k_cell)}\n'
-                f'Match: {k_cell_match}\n'
-            )
             rule_match = rule_lhs.match_with_constraint(cterm)
             if rule_match:
                 # TODO: CTerm.match_with_constraint should return a Subst
