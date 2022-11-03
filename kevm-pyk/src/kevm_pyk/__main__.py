@@ -530,12 +530,8 @@ def exec_foundry_prove(
                     _LOGGER.info(f'Took {fast_depth} steps with fast rewriter to get node: {curr_node.id}.')
                     _write_cfg(cfg, cfgpath)
 
-            edge = KCFG.Edge(curr_node, target_node, mlTop(), -1)
-            claim = edge.to_claim()
-            claim_id = f'gen-block-{curr_node.id}-to-{target_node.id}'
-            depth, branching, result = foundry.get_claim_basic_block(
-                claim_id, claim, lemmas=lemma_rules, max_depth=max_depth
-            )
+            # TODO: Need to feed lemmas into execute endpoint
+            depth, branching, result = foundry.execute(curr_node.cterm, depth=max_depth)
 
             if result == mlTop():
                 cfg.create_edge(curr_node.id, target_node.id, mlTop(), depth)
