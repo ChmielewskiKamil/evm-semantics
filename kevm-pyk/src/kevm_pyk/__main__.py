@@ -366,7 +366,6 @@ def exec_foundry_prove(
     def prove_it(id_and_cfg: Tuple[str, Tuple[KCFG, Path]]) -> bool:
         cfgid, (cfg, cfgpath) = id_and_cfg
         target_node = cfg.get_unique_target()
-        failure_nodes: List[str] = []
         iterations = 0
 
         while cfg.frontier:
@@ -400,7 +399,6 @@ def exec_foundry_prove(
 
                 if KEVM.is_terminal(next_node.cterm):
                     cfg.add_expanded(next_node.id)
-                    failure_nodes.append(next_node.id)
                     _LOGGER.info(f'Terminal node {cfgid}: {shorten_hashes((curr_node.id))}.')
 
                 elif branching:
@@ -440,12 +438,13 @@ def exec_foundry_prove(
 
             _write_cfg(cfg, cfgpath)
 
-        if failure_nodes:
+        failure_nodes = cfg.frontier + cfg.stuck
+        if len(failure_nodes) > 0:
             _LOGGER.error(f'Proof failed: {cfgid}')
             return False
-
-        _LOGGER.info(f'Proof passed: {cfgid}')
-        return True
+        else:
+            _LOGGER.info(f'Proof passed: {cfgid}')
+            return True
 
     with ProcessPool(ncpus=workers) as process_pool:
         results = process_pool.map(prove_it, kcfgs.items())
