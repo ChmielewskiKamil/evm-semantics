@@ -23,7 +23,7 @@ from pyk.kast import (
     KVariable,
     Subst,
 )
-from pyk.kastManip import flatten_label, minimize_term, push_down_rewrites
+from pyk.kastManip import abstract_term_safely, flatten_label, minimize_term, push_down_rewrites
 from pyk.kcfg import KCFG
 from pyk.ktool.kit import KIT
 from pyk.ktool.kompile import KompileBackend
@@ -530,7 +530,11 @@ def exec_foundry_prove(
                     _write_cfg(cfg, cfgpath)
 
             # TODO: Need to feed lemmas into execute endpoint
-            depth, branching, result = foundry.execute(curr_node.cterm, depth=max_depth)
+            # TODO: Need to store CTerms with `<generatedTop>` in place
+            config, *constraints = curr_node.cterm
+            config = KApply('<generatedTop>', [config, abstract_term_safely(config)])
+            new_cterm = CTerm(mlAnd([config] + constraints))
+            depth, branching, result = foundry.execute(new_cterm, depth=max_depth)
             cfg.add_expanded(curr_node.id)
 
             if result == mlTop():
