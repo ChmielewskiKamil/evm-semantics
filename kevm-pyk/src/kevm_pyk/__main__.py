@@ -512,14 +512,13 @@ def exec_foundry_prove(
                 break
             iterations += 1
             curr_node = cfg.frontier[0]
-            cfg.add_expanded(curr_node.id)
             _LOGGER.info(f'Advancing proof from node {cfgid}: {shorten_hashes(curr_node.id)}')
 
             if boost:
                 fast_depth, fast_next_cterm = foundry.get_basic_block_fast(curr_node.cterm)
                 if fast_depth > 0:
+                    cfg.add_expanded(curr_node.id)
                     fast_next_node = cfg.get_or_create_node(fast_next_cterm)
-                    cfg.add_expanded(fast_next_node.id)
                     edge_constraint = mlAnd(
                         [c for c in fast_next_cterm.constraints if c not in curr_node.cterm.constraints]
                     )
@@ -532,6 +531,7 @@ def exec_foundry_prove(
 
             # TODO: Need to feed lemmas into execute endpoint
             depth, branching, result = foundry.execute(curr_node.cterm, depth=max_depth)
+            cfg.add_expanded(curr_node.id)
 
             if result == mlTop():
                 cfg.create_edge(curr_node.id, target_node.id, mlTop(), depth)
