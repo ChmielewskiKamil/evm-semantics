@@ -472,12 +472,12 @@ python-versions = ">=3.6"
 
 [[package]]
 name = "pyk"
-version = "0.1.34"
+version = "0.1.40"
 description = ""
 category = "main"
 optional = false
 python-versions = "^3.8"
-develop = false
+develop = true
 
 [package.dependencies]
 flask = "^2.2.2"
@@ -487,10 +487,8 @@ graphql-server = "^3.0.0b5"
 graphviz = "^0.20.1"
 
 [package.source]
-type = "git"
-url = "https://github.com/runtimeverification/pyk.git"
-reference = "v0.1.34"
-resolved_reference = "6d12754081f548fd60a62add5e77e428a21b3c1d"
+type = "directory"
+url = "../../pyk"
 
 [[package]]
 name = "requests"
@@ -591,7 +589,7 @@ testing = ["flake8 (<5)", "func-timeout", "jaraco.functools", "jaraco.itertools"
 [metadata]
 lock-version = "1.1"
 python-versions = "^3.8"
-content-hash = "72cb21179acfe9351c603fd4411c2faaf790a345c1c2356bb7b5036e44b93e15"
+content-hash = "def7f2de22db0fe6d20bd9cd41221203db2382784f5f223c96320bd151115061"
 
 [metadata.files]
 aniso8601 = [
