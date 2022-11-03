@@ -17,21 +17,21 @@ from pyk.kast import (
     KImport,
     KInner,
     KRequire,
+    KRewrite,
     KRule,
     KSort,
     KToken,
     KVariable,
-    KRewrite,
     Subst,
 )
-from pyk.kastManip import minimize_term, push_down_rewrites
+from pyk.kastManip import flatten_label, minimize_term, push_down_rewrites
 from pyk.kcfg import KCFG
 from pyk.ktool.kit import KIT
 from pyk.ktool.kompile import KompileBackend
 from pyk.ktool.krun import _krun
 from pyk.prelude.kbool import FALSE
 from pyk.prelude.kint import intToken
-from pyk.prelude.ml import mlTop
+from pyk.prelude.ml import mlAnd, mlTop
 from pyk.utils import shorten_hashes
 
 from .gst_to_kore import gst_to_kore
@@ -479,7 +479,6 @@ def exec_foundry_prove(
     def prove_it(id_and_cfg: Tuple[str, Tuple[KCFG, Path]]) -> bool:
         cfgid, (cfg, cfgpath) = id_and_cfg
         target_node = cfg.get_unique_target()
-        failure_nodes: List[str] = []
         iterations = 0
 
         while cfg.frontier:
@@ -488,10 +487,10 @@ def exec_foundry_prove(
             iterations += 1
             curr_node = cfg.frontier[0]
             cfg.add_expanded(curr_node.id)
-            _LOGGER.info(f'Advancing proof from node: {shorten_hashes(curr_node.id)}')
+            _LOGGER.info(f'Advancing proof from node {cfgid}: {shorten_hashes(curr_node.id)}')
             edge = KCFG.Edge(curr_node, target_node, mlTop(), -1)
             claim = edge.to_claim()
-            claim_id = f'gen-{curr_node.id}-to-{target_node.id}'
+            claim_id = f'gen-block-{curr_node.id}-to-{target_node.id}'
             depth, branching, result = foundry.get_claim_basic_block(
                 claim_id, claim, lemmas=lemma_rules, max_depth=max_depth
             )
@@ -499,48 +498,66 @@ def exec_foundry_prove(
             if result == mlTop():
                 cfg.create_edge(curr_node.id, target_node.id, mlTop(), depth)
                 _LOGGER.info(
-                    f'Target state reached at depth {depth}, inserted edge from {shorten_hashes((curr_node.id))} to {shorten_hashes((target_node.id))}.'
+                    f'Target state reached at depth {depth} for {cfgid}: {shorten_hashes((curr_node.id, target_node.id))}.'
                 )
 
             else:
                 next_state = CTerm(sanitize_config(foundry.definition, result))
                 next_node = cfg.get_or_create_node(next_state)
                 if next_node != curr_node:
-                    _LOGGER.info(f'Found basic block at depth {depth}: {shorten_hashes((curr_node.id, next_node.id))}.')
+                    _LOGGER.info(
+                        f'Found basic block at depth {depth} for {cfgid}: {shorten_hashes((curr_node.id, next_node.id))}.'
+                    )
                     cfg.create_edge(curr_node.id, next_node.id, mlTop(), depth)
 
                 if KEVM.is_terminal(next_node.cterm):
                     cfg.add_expanded(next_node.id)
-                    failure_nodes.append(next_node.id)
-                    _LOGGER.info(f'Terminal node: {shorten_hashes((curr_node.id))}.')
+                    _LOGGER.info(f'Terminal node {cfgid}: {shorten_hashes((curr_node.id))}.')
 
                 elif branching:
-                    branches = KEVM.extract_branches(next_state)
-                    if not branches:
-                        raise ValueError(
-                            f'Could not extract branch condition:\n{foundry.pretty_print(minimize_term(result))}'
-                        )
                     cfg.add_expanded(next_node.id)
-                    _LOGGER.info(
-                        f'Found {len(list(branches))} branches at depth {depth}: {[foundry.pretty_print(b) for b in branches]}'
-                    )
-                    for branch in branches:
-                        branch_cterm = next_state.add_constraint(branch)
-                        branch_node = cfg.get_or_create_node(branch_cterm)
-                        cfg.create_edge(next_node.id, branch_node.id, branch, 0)
-                        _LOGGER.info(f'Made split: {shorten_hashes((next_node.id, branch_node.id))}')
-                        # TODO: have to store case splits as rewrites because of how frontier is handled for covers
-                        # cfg.create_cover(branch_node.id, next_node.id)
-                        # _LOGGER.info(f'Made cover: {shorten_hashes((branch_node.id, next_node.id))}')
+                    branches = KEVM.extract_branches(next_state)
+                    if len(list(branches)) > 0:
+                        _LOGGER.info(
+                            f'Found {len(list(branches))} branches at depth {depth} for {cfgid}: {[foundry.pretty_print(b) for b in branches]}'
+                        )
+                        for branch in branches:
+                            branch_cterm = next_state.add_constraint(branch)
+                            branch_node = cfg.get_or_create_node(branch_cterm)
+                            cfg.create_edge(next_node.id, branch_node.id, branch, 0)
+                            _LOGGER.info(f'Made split for {cfgid}: {shorten_hashes((next_node.id, branch_node.id))}')
+                            # TODO: have to store case splits as rewrites because of how frontier is handled for covers
+                            # cfg.create_cover(branch_node.id, next_node.id)
+                            # _LOGGER.info(f'Made cover: {shorten_hashes((branch_node.id, next_node.id))}')
+                    else:
+                        _LOGGER.warning(
+                            f'Falling back to running backend for branch extraction {cfgid}:\n{foundry.pretty_print(minimize_term(result))}'
+                        )
+                        edge = KCFG.Edge(next_node, target_node, mlTop(), -1)
+                        claim = edge.to_claim()
+                        claim_id = f'gen-branch-{curr_node.id}-to-{target_node.id}'
+                        result = foundry.prove_claim(claim, claim_id, lemmas=lemma_rules, args=['--depth', '1'])
+                        branch_cterms = [CTerm(r) for r in flatten_label('#Or', result)]
+                        old_constraints = next_state.constraints
+                        new_constraints = [
+                            [c for c in s.constraints if c not in old_constraints] for s in branch_cterms
+                        ]
+                        _LOGGER.info(
+                            f'Found {len(list(branch_cterms))} branches manually ad depth 1 for {cfgid}: {[foundry.pretty_print(mlAnd(nc)) for nc in new_constraints]}'
+                        )
+                        for ns, nc in zip(branch_cterms, new_constraints):
+                            branch_node = cfg.get_or_create_node(ns)
+                            cfg.create_edge(next_node.id, branch_node.id, mlAnd(nc), 1)
 
             _write_cfg(cfg, cfgpath)
 
-        if failure_nodes:
+        failure_nodes = cfg.frontier + cfg.stuck
+        if len(failure_nodes) > 0:
             _LOGGER.error(f'Proof failed: {cfgid}')
             return False
-
-        _LOGGER.info(f'Proof passed: {cfgid}')
-        return True
+        else:
+            _LOGGER.info(f'Proof passed: {cfgid}')
+            return True
 
     with ProcessPool(ncpus=workers) as process_pool:
         results = process_pool.map(prove_it, kcfgs.items())
@@ -556,7 +573,7 @@ def exec_foundry_prove(
     sys.exit(failed)
 
 
-def exec_foundry_show_cfg(
+def exec_foundry_show(
     profile: bool,
     foundry_out: Path,
     test: str,
@@ -586,6 +603,31 @@ def exec_foundry_show_cfg(
         if minimize:
             config_delta = minimize_term(config_delta)
         print(f'\n\nState Delta {node_id_1} => {node_id_2}:\n\n{foundry.pretty_print(config_delta)}\n')
+
+
+def exec_foundry_list(
+    profile: bool,
+    foundry_out: Path,
+    details: bool = True,
+    **kwargs: Any,
+) -> None:
+    kcfgs_dir = foundry_out / 'kcfgs'
+    pattern = '*.json'
+    paths = kcfgs_dir.glob(pattern)
+    for kcfg_file in paths:
+        with open(kcfg_file, 'r') as kf:
+            kcfg = KCFG.from_dict(json.loads(kf.read()))
+        kcfg_name = kcfg_file.name[0:-5]
+        total_nodes = len(kcfg.nodes)
+        frontier_nodes = len(kcfg.frontier)
+        stuck_nodes = len(kcfg.stuck)
+        proven = 'passed' if frontier_nodes + stuck_nodes == 0 else 'failed'
+        print(f'{kcfg_name}: {proven}')
+        if details:
+            print(f'    nodes: {total_nodes}')
+            print(f'    frontier: {frontier_nodes}')
+            print(f'    stuck: {stuck_nodes}')
+            print()
 
 
 def exec_run(
@@ -882,14 +924,14 @@ def _create_argument_parser() -> ArgumentParser:
         help='Do not simplify the initial and target states at startup.',
     )
 
-    foundry_show_cfg_args = command_parser.add_parser(
-        'foundry-show-cfg',
+    foundry_show_args = command_parser.add_parser(
+        'foundry-show',
         help='Display a given Foundry CFG.',
         parents=[shared_args, k_args],
     )
-    foundry_show_cfg_args.add_argument('foundry_out', type=dir_path, help='Path to Foundry output directory.')
-    foundry_show_cfg_args.add_argument('test', type=str, help='Display the CFG for this test.')
-    foundry_show_cfg_args.add_argument(
+    foundry_show_args.add_argument('foundry_out', type=dir_path, help='Path to Foundry output directory.')
+    foundry_show_args.add_argument('test', type=str, help='Display the CFG for this test.')
+    foundry_show_args.add_argument(
         '--node',
         type=str,
         dest='nodes',
@@ -897,7 +939,7 @@ def _create_argument_parser() -> ArgumentParser:
         action='append',
         help='List of nodes to display as well.',
     )
-    foundry_show_cfg_args.add_argument(
+    foundry_show_args.add_argument(
         '--node-delta',
         type=KIT.arg_pair_of(str, str),
         dest='node_deltas',
@@ -905,12 +947,23 @@ def _create_argument_parser() -> ArgumentParser:
         action='append',
         help='List of nodes to display delta for.',
     )
-    foundry_show_cfg_args.add_argument(
+    foundry_show_args.add_argument(
         '--minimize', dest='minimize', default=True, action='store_true', help='Minimize output.'
     )
-    foundry_show_cfg_args.add_argument(
+    foundry_show_args.add_argument(
         '--no-minimize', dest='minimize', action='store_false', help='Do not minimize output.'
     )
+
+    foundry_list_args = command_parser.add_parser(
+        'foundry-list',
+        help='List information about KCFGs on disk',
+        parents=[shared_args, k_args],
+    )
+    foundry_list_args.add_argument('foundry_out', type=dir_path, help='Path to Foundry output directory.')
+    foundry_list_args.add_argument(
+        '--details', dest='details', default=True, action='store_true', help='Information about progress on each KCFG.'
+    )
+    foundry_list_args.add_argument('--no-details', dest='details', action='store_false', help='Just list the KCFGs.')
 
     return parser
 
