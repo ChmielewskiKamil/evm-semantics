@@ -331,13 +331,17 @@ def exec_foundry_prove(
                 _LOGGER.info(f'Simplifying initial state for test: {test}')
                 edge = KCFG.Edge(cfg.get_unique_init(), cfg.get_unique_target(), mlTop(), -1)
                 claim = edge.to_claim()
-                init_simplified = foundry.prove_claim(claim, 'simplify-init', args=['--depth', '0'])
+                init_simplified = foundry.prove_claim(
+                    claim, f'simplify-init-{cfg.get_unique_init().id}', args=['--depth', '0']
+                )
                 init_simplified = sanitize_config(foundry.definition, init_simplified)
                 cfg = KCFG__replace_node(cfg, cfg.get_unique_init().id, CTerm(init_simplified))
                 _LOGGER.info(f'Simplifying target state for test: {test}')
                 edge = KCFG.Edge(cfg.get_unique_target(), cfg.get_unique_init(), mlTop(), -1)
                 claim = edge.to_claim()
-                target_simplified = foundry.prove_claim(claim, 'simplify-target', args=['--depth', '0'])
+                target_simplified = foundry.prove_claim(
+                    claim, f'simplify-target-{cfg.get_unique_target().id}', args=['--depth', '0']
+                )
                 target_simplified = sanitize_config(foundry.definition, target_simplified)
                 cfg = KCFG__replace_node(cfg, cfg.get_unique_target().id, CTerm(target_simplified))
             kcfgs[test] = (cfg, kcfg_file)
@@ -442,7 +446,11 @@ def exec_foundry_list(
         total_nodes = len(kcfg.nodes)
         frontier_nodes = len(kcfg.frontier)
         stuck_nodes = len(kcfg.stuck)
-        proven = 'passed' if frontier_nodes + stuck_nodes == 0 else 'failed'
+        proven = 'failed'
+        if stuck_nodes == 0:
+            proven = 'pending'
+            if frontier_nodes == 0:
+                proven = 'passed'
         print(f'{kcfg_name}: {proven}')
         if details:
             print(f'    nodes: {total_nodes}')
