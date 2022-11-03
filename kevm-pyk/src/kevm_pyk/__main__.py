@@ -369,6 +369,7 @@ def exec_foundry_prove(
         _claim = KCFG.Edge(_init_node, _target_node, mlTop(), -1).to_claim()
         _claim_id = _cfg_id.replace('.', '-').replace('_', '-')
         ret, result = KProve_prove_claim(foundry, _claim, _claim_id, _LOGGER, depth=depth, lemmas=lemma_rules)
+        _cfg.add_expanded(_init_node.id)
         if is_top(result):
             _cfg.create_edge(_cfg.get_unique_init().id, _cfg.get_unique_target().id, mlTop(), -1)
             _LOGGER.info(f'Proof passed: {_cfg_id}')
@@ -381,8 +382,8 @@ def exec_foundry_prove(
                     result_state = minimize_term(result_state)
                 _LOGGER.error(f'Proof failed: {_cfg_id}\n{foundry.pretty_print(result_state)}')
         _write_cfg(_cfg, _cfg_path)
-        failure_nodes = cfg.frontier + cfg.stuck
-        return failure_nodes == 0
+        failure_nodes = _cfg.frontier + _cfg.stuck
+        return len(failure_nodes) == 0
 
     with ProcessPool(ncpus=workers) as process_pool:
         results = process_pool.map(prove_it, kcfgs.items())
