@@ -11,7 +11,6 @@ from pyk.cterm import CTerm, build_claim
 from pyk.kast import (
     KApply,
     KAtt,
-    KClaim,
     KDefinition,
     KFlatModule,
     KImport,
@@ -466,9 +465,6 @@ def exec_foundry_prove(
             with open(kcfg_file, 'r') as kf:
                 kcfgs[test] = (KCFG.from_dict(json.loads(kf.read())), kcfg_file)
 
-    def _kcfg_unproven_to_claim(_kcfg: KCFG) -> KClaim:
-        return _kcfg.create_edge(_kcfg.get_unique_init().id, _kcfg.get_unique_target().id, mlTop(), depth=-1).to_claim()
-
     lemma_rules = [KRule(KToken(lr, 'K'), att=KAtt({'simplification': ''})) for lr in lemmas]
 
     def _write_cfg(_cfg: KCFG, _cfgpath: Path) -> None:
@@ -552,12 +548,12 @@ def exec_foundry_prove(
             _write_cfg(cfg, cfgpath)
 
         failure_nodes = cfg.frontier + cfg.stuck
-        if len(failure_nodes) > 0:
-            _LOGGER.error(f'Proof failed: {cfgid}')
-            return False
-        else:
+        if len(failure_nodes) == 0:
             _LOGGER.info(f'Proof passed: {cfgid}')
             return True
+        else:
+            _LOGGER.error(f'Proof failed: {cfgid}')
+            return False
 
     with ProcessPool(ncpus=workers) as process_pool:
         results = process_pool.map(prove_it, kcfgs.items())
@@ -897,6 +893,19 @@ def _create_argument_parser() -> ArgumentParser:
         help='Reinitialize KCFGs even if they already exist.',
     )
     foundry_prove_args.add_argument(
+        '--simplify-init',
+        dest='simplify_init',
+        default=True,
+        action='store_true',
+        help='Simplify the initial and target states at startup.',
+    )
+    foundry_prove_args.add_argument(
+        '--no-simplify-init',
+        dest='simplify_init',
+        action='store_false',
+        help='Do not simplify the initial and target states at startup.',
+    )
+    foundry_prove_args.add_argument(
         '--max-depth',
         dest='max_depth',
         default=250,
@@ -909,19 +918,6 @@ def _create_argument_parser() -> ArgumentParser:
         default=None,
         type=int,
         help='Store every Nth state in the KCFG for inspection.',
-    )
-    foundry_prove_args.add_argument(
-        '--simplify-init',
-        dest='simplify_init',
-        default=True,
-        action='store_true',
-        help='Simplify the initial and target states at startup.',
-    )
-    foundry_prove_args.add_argument(
-        '--no-simplify-init',
-        dest='simplify_init',
-        action='store_false',
-        help='Do not simplify the initial and target states at startup.',
     )
 
     foundry_show_args = command_parser.add_parser(
