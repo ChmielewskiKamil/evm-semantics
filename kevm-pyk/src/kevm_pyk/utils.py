@@ -64,6 +64,7 @@ def rpc_prove(
     # rest of the method in try-finally to gracefully close the booster
     try:
 
+        _LOGGER.warning("here we go!")
         if simplify_init:
             for node in cfg.nodes:
                 _LOGGER.info(f'Simplifying node {cfgid}: {shorten_hashes(node.id)}')
@@ -79,6 +80,8 @@ def rpc_prove(
         target_node = cfg.get_unique_target()
         iterations = 0
 
+        _LOGGER.warning("Starting loop")
+
         while cfg.frontier:
             write_cfg(cfg, cfgpath)
             if max_iterations is not None and max_iterations <= iterations:
@@ -86,6 +89,8 @@ def rpc_prove(
                 break
             iterations += 1
             curr_node = cfg.frontier[0]
+
+            _LOGGER.warning("In the loop...")
 
             if implication_every_block or (is_terminal is not None and is_terminal(curr_node.cterm)):
                 _LOGGER.info(
@@ -115,6 +120,12 @@ def rpc_prove(
                     continue
 
             cfg.add_expanded(curr_node.id)
+
+            _LOGGER.warning("Trying booster execution. Please fasten your seat belts!")
+            reason, depth, _, _ = booster.execute(
+                curr_node.cterm, max_depth=max_depth, cut_point_rules=cut_point_rules, terminal_rules=terminal_rules
+            )
+            _LOGGER.warning("Booster execution stopped at depth %i, reason %s", reason, depth)
 
             _LOGGER.info(f'Advancing proof from node {cfgid}: {shorten_hashes(curr_node.id)}')
             depth, cterm, next_cterms = kprove.execute(
@@ -256,7 +267,9 @@ def abstract_cell_vars(cterm: KInner, keep_vars: Collection[KVariable] = ()) -> 
 def replace_special_chars(inp: str, c: str) -> str:
     return inp.replace('.', c).replace('-', c).replace('_', c).replace('/', c)
 
+
 ################ hacking in booster support ###################
+
 
 class Booster(KPrint):
     _server: KoreServer
