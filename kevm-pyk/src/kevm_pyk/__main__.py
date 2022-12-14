@@ -1,6 +1,7 @@
 import json
 import logging
 import sys
+import traceback
 from argparse import ArgumentParser, Namespace
 from pathlib import Path
 from typing import Any, Callable, Dict, Final, Iterable, List, Optional, Tuple, TypeVar
@@ -406,6 +407,7 @@ def exec_foundry_prove(
                 implication_every_block=implication_every_block,
             )
         except Exception as e:
+            traceback.print_tb(e.__traceback__)
             _LOGGER.error(f'Proof crashed: {_cfgid}\n{e}')
             foundry.close()
             return False
