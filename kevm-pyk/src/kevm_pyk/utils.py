@@ -7,6 +7,7 @@ from pyk.kast.inner import KApply, KInner, KRewrite, KVariable, Subst
 from pyk.kast.manip import abstract_term_safely, bottom_up, is_anon_var, split_config_and_constraints, split_config_from
 from pyk.kast.outer import KDefinition, KFlatModule, KImport
 from pyk.kcfg import KCFG
+from pyk.kore.rpc import KoreClient, KoreServer
 from pyk.ktool import KPrint, KProve
 from pyk.prelude.ml import is_bottom, is_top, mlAnd, mlTop
 from pyk.utils import shorten_hashes
@@ -57,108 +58,118 @@ def rpc_prove(
 ) -> bool:
     kprove.set_kore_rpc_port(rpc_port)
 
-    if simplify_init:
-        for node in cfg.nodes:
-            _LOGGER.info(f'Simplifying node {cfgid}: {shorten_hashes(node.id)}')
-            new_term = kprove.simplify(node.cterm)
-            if is_top(new_term):
-                raise ValueError(f'Node simplified to #Top {cfgid}: {shorten_hashes(node.id)}')
-            if is_bottom(new_term):
-                raise ValueError(f'Node simplified to #Bottom {cfgid}: {shorten_hashes(node.id)}')
-            if new_term != node.cterm.kast:
-                KCFG__replace_node(cfg, node.id, CTerm(new_term))
-    write_cfg(cfg, cfgpath)
+    # start booster rpc server
+    booster = Booster(kprove.definition_dir, kprove.main_module, 10000 + rpc_port)
 
-    target_node = cfg.get_unique_target()
-    iterations = 0
+    # rest of the method in try-finally to gracefully close the booster
+    try:
 
-    while cfg.frontier:
+        if simplify_init:
+            for node in cfg.nodes:
+                _LOGGER.info(f'Simplifying node {cfgid}: {shorten_hashes(node.id)}')
+                new_term = kprove.simplify(node.cterm)
+                if is_top(new_term):
+                    raise ValueError(f'Node simplified to #Top {cfgid}: {shorten_hashes(node.id)}')
+                if is_bottom(new_term):
+                    raise ValueError(f'Node simplified to #Bottom {cfgid}: {shorten_hashes(node.id)}')
+                if new_term != node.cterm.kast:
+                    KCFG__replace_node(cfg, node.id, CTerm(new_term))
         write_cfg(cfg, cfgpath)
-        if max_iterations is not None and max_iterations <= iterations:
-            _LOGGER.warning(f'Reached iteration bound: {max_iterations}')
-            break
-        iterations += 1
-        curr_node = cfg.frontier[0]
 
-        if implication_every_block or (is_terminal is not None and is_terminal(curr_node.cterm)):
-            _LOGGER.info(
-                f'Checking subsumption into target state {cfgid}: {shorten_hashes((curr_node.id, target_node.id))}'
-            )
-            impl = kprove.implies(curr_node.cterm, target_node.cterm)
-            if impl is not None:
-                subst, pred = impl
-                cfg.create_cover(curr_node.id, target_node.id, subst=subst, constraint=pred)
-                _LOGGER.info(f'Subsumed into target node: {shorten_hashes((curr_node.id, target_node.id))}')
-                continue
+        target_node = cfg.get_unique_target()
+        iterations = 0
 
-        if is_terminal is not None:
-            _LOGGER.info(f'Checking terminal {cfgid}: {shorten_hashes(curr_node.id)}')
-            if is_terminal(curr_node.cterm):
-                _LOGGER.info(f'Terminal node {cfgid}: {shorten_hashes(curr_node.id)}.')
-                cfg.add_expanded(curr_node.id)
-                continue
+        while cfg.frontier:
+            write_cfg(cfg, cfgpath)
+            if max_iterations is not None and max_iterations <= iterations:
+                _LOGGER.warning(f'Reached iteration bound: {max_iterations}')
+                break
+            iterations += 1
+            curr_node = cfg.frontier[0]
 
-        if auto_abstract is not None:
-            _LOGGER.info(f'Auto abstraction {cfgid}: {shorten_hashes(curr_node.id)}')
-            abstracted = auto_abstract(curr_node.cterm)
-            if abstracted != curr_node.cterm:
-                abstracted_node = cfg.get_or_create_node(abstracted)
-                cfg.create_cover(curr_node.id, abstracted_node.id)
-                _LOGGER.info(f'Abstracted node: {shorten_hashes((curr_node.id, abstracted_node.id))}')
-                continue
-
-        cfg.add_expanded(curr_node.id)
-
-        _LOGGER.info(f'Advancing proof from node {cfgid}: {shorten_hashes(curr_node.id)}')
-        depth, cterm, next_cterms = kprove.execute(
-            curr_node.cterm, depth=max_depth, cut_point_rules=cut_point_rules, terminal_rules=terminal_rules
-        )
-
-        # Nonsense case.
-        if len(next_cterms) == 1:
-            raise ValueError(f'Found a single successor cterm: {(depth, cterm, next_cterms)}')
-
-        if len(next_cterms) == 0 and depth == 0:
-            _LOGGER.info(f'Found stuck node {cfgid}: {shorten_hashes(curr_node.id)}')
-            continue
-
-        if depth > 0:
-            next_node = cfg.get_or_create_node(cterm)
-            cfg.create_edge(curr_node.id, next_node.id, mlTop(), depth)
-            _LOGGER.info(
-                f'Found basic block at depth {depth} for {cfgid}: {shorten_hashes((curr_node.id, next_node.id))}.'
-            )
-
-            branches = extract_branches(cterm) if extract_branches is not None else []
-            if len(list(branches)) > 0:
-                cfg.add_expanded(next_node.id)
+            if implication_every_block or (is_terminal is not None and is_terminal(curr_node.cterm)):
                 _LOGGER.info(
-                    f'Found {len(list(branches))} branches {cfgid}: {[kprove.pretty_print(b) for b in branches]}'
+                    f'Checking subsumption into target state {cfgid}: {shorten_hashes((curr_node.id, target_node.id))}'
                 )
-                splits = cfg.split_node(next_node.id, branches)
-                _LOGGER.info(f'Made split for {cfgid}: {shorten_hashes((next_node.id, splits))}')
+                impl = kprove.implies(curr_node.cterm, target_node.cterm)
+                if impl is not None:
+                    subst, pred = impl
+                    cfg.create_cover(curr_node.id, target_node.id, subst=subst, constraint=pred)
+                    _LOGGER.info(f'Subsumed into target node: {shorten_hashes((curr_node.id, target_node.id))}')
+                    continue
+
+            if is_terminal is not None:
+                _LOGGER.info(f'Checking terminal {cfgid}: {shorten_hashes(curr_node.id)}')
+                if is_terminal(curr_node.cterm):
+                    _LOGGER.info(f'Terminal node {cfgid}: {shorten_hashes(curr_node.id)}.')
+                    cfg.add_expanded(curr_node.id)
+                    continue
+
+            if auto_abstract is not None:
+                _LOGGER.info(f'Auto abstraction {cfgid}: {shorten_hashes(curr_node.id)}')
+                abstracted = auto_abstract(curr_node.cterm)
+                if abstracted != curr_node.cterm:
+                    abstracted_node = cfg.get_or_create_node(abstracted)
+                    cfg.create_cover(curr_node.id, abstracted_node.id)
+                    _LOGGER.info(f'Abstracted node: {shorten_hashes((curr_node.id, abstracted_node.id))}')
+                    continue
+
+            cfg.add_expanded(curr_node.id)
+
+            _LOGGER.info(f'Advancing proof from node {cfgid}: {shorten_hashes(curr_node.id)}')
+            depth, cterm, next_cterms = kprove.execute(
+                curr_node.cterm, depth=max_depth, cut_point_rules=cut_point_rules, terminal_rules=terminal_rules
+            )
+
+            # Nonsense case.
+            if len(next_cterms) == 1:
+                raise ValueError(f'Found a single successor cterm: {(depth, cterm, next_cterms)}')
+
+            if len(next_cterms) == 0 and depth == 0:
+                _LOGGER.info(f'Found stuck node {cfgid}: {shorten_hashes(curr_node.id)}')
                 continue
 
+            if depth > 0:
+                next_node = cfg.get_or_create_node(cterm)
+                cfg.create_edge(curr_node.id, next_node.id, mlTop(), depth)
+                _LOGGER.info(
+                    f'Found basic block at depth {depth} for {cfgid}: {shorten_hashes((curr_node.id, next_node.id))}.'
+                )
+
+                branches = extract_branches(cterm) if extract_branches is not None else []
+                if len(list(branches)) > 0:
+                    cfg.add_expanded(next_node.id)
+                    _LOGGER.info(
+                        f'Found {len(list(branches))} branches {cfgid}: {[kprove.pretty_print(b) for b in branches]}'
+                    )
+                    splits = cfg.split_node(next_node.id, branches)
+                    _LOGGER.info(f'Made split for {cfgid}: {shorten_hashes((next_node.id, splits))}')
+                    continue
+
+            else:
+                _LOGGER.warning(f'Falling back to manual branch extraction {cfgid}: {shorten_hashes(curr_node.id)}')
+                branch_constraints = [[c for c in s.constraints if c not in cterm.constraints] for s in next_cterms]
+                _LOGGER.info(
+                    f'Found {len(list(next_cterms))} branches manually at depth 1 for {cfgid}: {[kprove.pretty_print(mlAnd(bc)) for bc in branch_constraints]}'
+                )
+                for bs, bc in zip(next_cterms, branch_constraints, strict=True):
+                    branch_node = cfg.get_or_create_node(bs)
+                    cfg.create_edge(curr_node.id, branch_node.id, mlAnd(bc), 1)
+
+        write_cfg(cfg, cfgpath)
+        kprove.close()
+
+        failure_nodes = cfg.frontier + cfg.stuck
+        if len(failure_nodes) == 0:
+            _LOGGER.info(f'Proof passed: {cfgid}')
+            return True
         else:
-            _LOGGER.warning(f'Falling back to manual branch extraction {cfgid}: {shorten_hashes(curr_node.id)}')
-            branch_constraints = [[c for c in s.constraints if c not in cterm.constraints] for s in next_cterms]
-            _LOGGER.info(
-                f'Found {len(list(next_cterms))} branches manually at depth 1 for {cfgid}: {[kprove.pretty_print(mlAnd(bc)) for bc in branch_constraints]}'
-            )
-            for bs, bc in zip(next_cterms, branch_constraints, strict=True):
-                branch_node = cfg.get_or_create_node(bs)
-                cfg.create_edge(curr_node.id, branch_node.id, mlAnd(bc), 1)
+            _LOGGER.error(f'Proof failed: {cfgid}')
+            return False
 
-    write_cfg(cfg, cfgpath)
-    kprove.close()
-
-    failure_nodes = cfg.frontier + cfg.stuck
-    if len(failure_nodes) == 0:
-        _LOGGER.info(f'Proof passed: {cfgid}')
-        return True
-    else:
-        _LOGGER.error(f'Proof failed: {cfgid}')
-        return False
+    finally:
+        # shut down booster
+        booster.close()
 
 
 def KDefinition__expand_macros(defn: KDefinition, term: KInner) -> KInner:  # noqa: N802
@@ -244,3 +255,42 @@ def abstract_cell_vars(cterm: KInner, keep_vars: Collection[KVariable] = ()) -> 
 
 def replace_special_chars(inp: str, c: str) -> str:
     return inp.replace('.', c).replace('-', c).replace('_', c).replace('/', c)
+
+################ hacking in booster support ###################
+
+class Booster(KPrint):
+    _server: KoreServer
+    _client: KoreClient
+    _port: int
+
+    def __init__(self, kompiled_dir: Path, module_name: str, port: int, command: str = "hs-backend-booster"):
+        super(Booster, self).__init__(kompiled_dir)
+
+        _LOGGER.warn("Starting rpc booster (%s) with directory %s and module %s", command, kompiled_dir, module_name)
+
+        self._server = KoreServer(kompiled_dir, module_name, port, command=command)
+        self._client = KoreClient("localhost", port)
+        _LOGGER.warn("Booster ready to use on port %s", port)
+
+    def close(self) -> None:
+        self._server.close()
+        self._client.close()
+        _LOGGER.warn("Booster finished")
+
+    def execute(
+        self,
+        cterm: CTerm,
+        *,
+        max_depth: Optional[int] = None,
+        cut_point_rules: Optional[Iterable[str]] = None,
+        terminal_rules: Optional[Iterable[str]] = None,
+    ) -> Tuple[str, int, CTerm, List[CTerm]]:
+        _LOGGER.warn("Executing booster")
+        pattern = self.kast_to_kore(cterm.kast)
+        result = self._client.execute(
+            pattern, max_depth=max_depth, cut_point_rules=cut_point_rules, terminal_rules=terminal_rules
+        )
+        state = CTerm(self.kore_to_kast(result.state.kore))
+        next_kores = result.next_states if result.next_states is not None else []
+        nexts = [CTerm(self.kore_to_kast(next.kore)) for next in next_kores]
+        return str(result.reason), result.depth, state, nexts
