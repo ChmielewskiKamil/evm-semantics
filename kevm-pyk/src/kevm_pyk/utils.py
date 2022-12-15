@@ -1,13 +1,14 @@
 import logging
+import time
 from pathlib import Path
-from typing import Callable, Collection, Final, Iterable, List, Optional, Tuple
+from typing import Any, Callable, Collection, ContextManager, Final, Iterable, List, Optional, Tuple, Union
 
 from pyk.cterm import CTerm
 from pyk.kast.inner import KApply, KInner, KRewrite, KVariable, Subst
 from pyk.kast.manip import abstract_term_safely, bottom_up, is_anon_var, split_config_and_constraints, split_config_from
 from pyk.kast.outer import KDefinition, KFlatModule, KImport
 from pyk.kcfg import KCFG
-from pyk.kore.rpc import KoreClient, KoreServer
+from pyk.kore.rpc import KoreClient, KoreServer, StopReason
 from pyk.ktool import KPrint, KProve
 from pyk.prelude.ml import is_bottom, is_top, mlAnd, mlTop
 from pyk.utils import shorten_hashes
@@ -58,11 +59,10 @@ def rpc_prove(
 ) -> bool:
     kprove.set_kore_rpc_port(rpc_port)
 
-    # start booster rpc server
-    booster = Booster(kprove.definition_dir, kprove.main_module, 10000 + rpc_port)
-
-    # rest of the method in try-finally to gracefully close the booster
-    try:
+    # start booster rpc server and use it in the block
+    with Booster(
+        kprove.definition_dir, kprove.main_module, 10000 + rpc_port, command=["hs-backend-booster", "-l", "Rewrite"]
+    ) as booster:
 
         _LOGGER.warning("here we go!")
         if simplify_init:
@@ -122,15 +122,20 @@ def rpc_prove(
             cfg.add_expanded(curr_node.id)
 
             _LOGGER.warning("Trying booster execution. Please fasten your seat belts!")
+            start = time.perf_counter()
             reason, depth, _, _ = booster.execute(
                 curr_node.cterm, max_depth=max_depth, cut_point_rules=cut_point_rules, terminal_rules=terminal_rules
             )
-            _LOGGER.warning("Booster execution stopped at depth %i, reason %s", reason, depth)
+            duration = time.perf_counter() - start
+            _LOGGER.warning(f'Booster execution {reason} at depth {depth}, time {duration}')
 
             _LOGGER.info(f'Advancing proof from node {cfgid}: {shorten_hashes(curr_node.id)}')
+            start = time.perf_counter()
             depth, cterm, next_cterms = kprove.execute(
                 curr_node.cterm, depth=max_depth, cut_point_rules=cut_point_rules, terminal_rules=terminal_rules
             )
+            duration = time.perf_counter() - start
+            _LOGGER.warning(f'KProve execution stopping at depth {depth}, time {duration}')
 
             # Nonsense case.
             if len(next_cterms) == 1:
@@ -177,10 +182,6 @@ def rpc_prove(
         else:
             _LOGGER.error(f'Proof failed: {cfgid}')
             return False
-
-    finally:
-        # shut down booster
-        booster.close()
 
 
 def KDefinition__expand_macros(defn: KDefinition, term: KInner) -> KInner:  # noqa: N802
@@ -271,24 +272,38 @@ def replace_special_chars(inp: str, c: str) -> str:
 ################ hacking in booster support ###################
 
 
-class Booster:
+class Booster(ContextManager['Booster']):
     _server: KoreServer
     _client: KoreClient
     _kprint: KPrint
     _port: int
 
-    def __init__(self, kompiled_dir: Path, module_name: str, port: int, command: str = "hs-backend-booster"):
+    def __init__(
+        self, kompiled_dir: Path, module_name: str, port: int, command: Union[str, Iterable[str]] = "hs-backend-booster"
+    ):
 
         self._kprint = KPrint(kompiled_dir)
         _LOGGER.warn("Starting rpc booster (%s) with directory %s and module %s", command, kompiled_dir, module_name)
         self._server = KoreServer(kompiled_dir, module_name, port, command=command)
         self._client = KoreClient("localhost", port)
+        self._port = port
         _LOGGER.warn("Booster ready to use on port %s", port)
 
+    def __enter__(self) -> 'Booster':
+        return self
+
+    def __exit__(self, *args: Any) -> None:
+        self.close()
+
+    def __del__(self) -> None:
+        self.close()
+
     def close(self) -> None:
-        self._server.close()
-        self._client.close()
-        _LOGGER.warn("Booster finished")
+        if self._port > 0:
+            self._server.close()
+            self._client.close()
+            self._port = 0
+            _LOGGER.warn("Booster finished")
 
     def execute(
         self,
@@ -297,7 +312,7 @@ class Booster:
         max_depth: Optional[int] = None,
         cut_point_rules: Optional[Iterable[str]] = None,
         terminal_rules: Optional[Iterable[str]] = None,
-    ) -> Tuple[str, int, CTerm, List[CTerm]]:
+    ) -> Tuple[StopReason, int, CTerm, List[CTerm]]:
         _LOGGER.warn("Executing booster")
         pattern = self._kprint.kast_to_kore(cterm.kast)
         result = self._client.execute(
@@ -306,4 +321,4 @@ class Booster:
         state = CTerm(self._kprint.kore_to_kast(result.state.kore))
         next_kores = result.next_states if result.next_states is not None else []
         nexts = [CTerm(self._kprint.kore_to_kast(next.kore)) for next in next_kores]
-        return str(result.reason), result.depth, state, nexts
+        return result.reason, result.depth, state, nexts
