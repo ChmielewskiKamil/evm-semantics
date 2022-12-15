@@ -271,16 +271,16 @@ def replace_special_chars(inp: str, c: str) -> str:
 ################ hacking in booster support ###################
 
 
-class Booster(KPrint):
+class Booster:
     _server: KoreServer
     _client: KoreClient
+    _kprint: KPrint
     _port: int
 
     def __init__(self, kompiled_dir: Path, module_name: str, port: int, command: str = "hs-backend-booster"):
-        super(Booster, self).__init__(kompiled_dir)
 
+        self._kprint = KPrint(kompiled_dir)
         _LOGGER.warn("Starting rpc booster (%s) with directory %s and module %s", command, kompiled_dir, module_name)
-
         self._server = KoreServer(kompiled_dir, module_name, port, command=command)
         self._client = KoreClient("localhost", port)
         _LOGGER.warn("Booster ready to use on port %s", port)
@@ -299,11 +299,11 @@ class Booster(KPrint):
         terminal_rules: Optional[Iterable[str]] = None,
     ) -> Tuple[str, int, CTerm, List[CTerm]]:
         _LOGGER.warn("Executing booster")
-        pattern = self.kast_to_kore(cterm.kast)
+        pattern = self._kprint.kast_to_kore(cterm.kast)
         result = self._client.execute(
             pattern, max_depth=max_depth, cut_point_rules=cut_point_rules, terminal_rules=terminal_rules
         )
-        state = CTerm(self.kore_to_kast(result.state.kore))
+        state = CTerm(self._kprint.kore_to_kast(result.state.kore))
         next_kores = result.next_states if result.next_states is not None else []
-        nexts = [CTerm(self.kore_to_kast(next.kore)) for next in next_kores]
+        nexts = [CTerm(self._kprint.kore_to_kast(next.kore)) for next in next_kores]
         return str(result.reason), result.depth, state, nexts
