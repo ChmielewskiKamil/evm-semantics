@@ -13,7 +13,8 @@ authors = [
 [tool.poetry.dependencies]
 python = "^3.10"
 pathos = "*"
-pyk = { git = "https://github.com/runtimeverification/pyk.git", branch = 'custom-kcfg-view' }
+pyk = { git = "https://github.com/runtimeverification/pyk.git", branch="jb/add-aborted-stop-reason-to-rpc-results" }
+# https://python-poetry.org/docs/dependency-specification/#git-dependencies
 
 [tool.poetry.group.dev.dependencies]
 autoflake = "*"
