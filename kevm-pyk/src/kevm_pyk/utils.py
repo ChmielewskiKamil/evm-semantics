@@ -121,23 +121,29 @@ def rpc_prove(
 
             cfg.add_expanded(curr_node.id)
 
-            _LOGGER.warning("Trying booster execution. Please fasten your seat belts!")
+            _LOGGER.info(f'Advancing proof from node {cfgid}: {shorten_hashes(curr_node.id)}')
+
+            _LOGGER.warning("Booster execution. Please fasten your seat belts!")
             start = time.perf_counter()
-            reason, depth, _, _ = booster.execute(
+            reason, depth, cterm, next_cterms = booster.execute(
                 curr_node.cterm, max_depth=max_depth, cut_point_rules=cut_point_rules, terminal_rules=terminal_rules
             )
             duration = time.perf_counter() - start
             _LOGGER.warning(f'Booster execution {reason} at depth {depth}, time {duration}')
 
-            _LOGGER.info(f'Advancing proof from node {cfgid}: {shorten_hashes(curr_node.id)}')
-            start = time.perf_counter()
-            depth, cterm, next_cterms = kprove.execute(
-                curr_node.cterm, depth=max_depth, cut_point_rules=cut_point_rules, terminal_rules=terminal_rules
-            )
-            duration = time.perf_counter() - start
-            _LOGGER.warning(f'KProve execution stopping at depth {depth}, time {duration}')
+            # if any steps were taken or the result is "branching",
+            # proceed. Otherwise consult the other backend for one step.
 
-            # Nonsense case.
+            if depth == 0 and reason != StopReason.BRANCHING:
+                _LOGGER.warning(f'{reason} after {depth} steps, using other backend for one step')
+                start = time.perf_counter()
+                depth, cterm, next_cterms = kprove.execute(
+                    curr_node.cterm, depth=1, cut_point_rules=cut_point_rules, terminal_rules=terminal_rules
+                )
+                duration = time.perf_counter() - start
+                _LOGGER.warning(f'KProve execution stopping at depth {depth}, time {duration}')
+
+            # Can only occur when cut-point rules are configured.
             if len(next_cterms) == 1:
                 raise ValueError(f'Found a single successor cterm: {(depth, cterm, next_cterms)}')
 
