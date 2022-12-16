@@ -284,7 +284,7 @@ class Booster(ContextManager['Booster']):
 
         self._kprint = KPrint(kompiled_dir)
         _LOGGER.warn("Starting rpc booster (%s) with directory %s and module %s", command, kompiled_dir, module_name)
-        self._server = KoreServer(kompiled_dir, module_name, port, command=command)
+        self._server = KoreServer(kompiled_dir, module_name, port, command=command, logging=Path('hs-boost.log'))
         self._client = KoreClient("localhost", port)
         self._port = port
         _LOGGER.warn("Booster ready to use on port %s", port)
