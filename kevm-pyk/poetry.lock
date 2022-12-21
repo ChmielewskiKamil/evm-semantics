@@ -853,7 +853,7 @@ plugins = ["importlib-metadata"]
 
 [[package]]
 name = "pyk"
-version = "0.1.88"
+version = "0.1.92"
 description = ""
 category = "main"
 optional = false
@@ -875,7 +875,7 @@ tomli = "^2.0.1"
 type = "git"
 url = "https://github.com/runtimeverification/pyk.git"
 reference = "jb/add-aborted-stop-reason-to-rpc-results"
-resolved_reference = "dc17f070ca95177f05812cd6205e63b4ea7c4231"
+resolved_reference = "c23af2ce2d7799c345ad3a542c9857dda2502b2a"
 
 [[package]]
 name = "pyperclip"
