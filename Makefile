@@ -495,6 +495,19 @@ test-foundry: KEVM = $(PYK_ACTIVATE) && kevm
 test-foundry: KOMPILE = $(PYK_ACTIVATE) && kevm kompile
 test-foundry: tests/foundry/foundry.k.check tests/foundry/out/kompiled/foundry.k.prove
 
+foundry-llvm: $(foundry_out)/llvm/interpreter
+
+.PHONY: $(foundry_out)/llvm/interpreter
+$(foundry_out)/llvm/interpreter: $(KEVM_BIN)/kevm build-llvm
+	$(KOMPILE) \
+		--backend llvm \
+		$(KEVM_INCLUDE)/kframework/$(foundry_main_file) \
+		--main-module $(foundry_main_module)            \
+		--syntax-module $(foundry_syntax_module)        \
+		-I $(KEVM_INCLUDE)/kframework                   \
+		--definition $(dir $@)                          \
+		--llvm-kompile-type c
+
 foundry-forge-build: $(foundry_out)
 
 foundry-forge-test: foundry-forge-build
