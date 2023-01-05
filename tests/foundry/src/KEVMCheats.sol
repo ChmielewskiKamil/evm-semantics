@@ -19,6 +19,8 @@ interface KEVMCheatsBase {
     function expectCreate2(address,uint256,bytes calldata) external;
     // Makes the storage of the given address completely symbolic.
     function symbolicStorage(address) external;
+    // Set the current <gas> cell
+    function setGas(uint256) external;
 }
 
 abstract contract KEVMCheats {
