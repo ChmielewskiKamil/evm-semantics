@@ -36,6 +36,13 @@ EnvTest.testEnvString
 EnvTest.testEnvStringArray
 EnvTest.testEnvUInt
 EnvTest.testEnvUIntArray
+Examples.test_decreasing_div
+Examples.test_max1
+Examples.test_max1_broken
+Examples.test_max2
+Examples.test_wdiv_rounding
+Examples.test_wmul_increasing
+Examples.test_wmul_rounding
 ExpectRevertTest.testFail_expectRevert_bytes4
 ExpectRevertTest.test_expectRevert_bytes4
 FfiTest.testffi
