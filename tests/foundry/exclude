@@ -5,6 +5,13 @@ AddrTest.test_addr_false
 AddrTest.testFail_addr_false
 AddrTest.testFail_addr_true
 AddrTest.test_addr_symbolic
+ArithmeticTest.test_decreasing_div
+ArithmeticTest.test_max1
+ArithmeticTest.test_max1_broken
+ArithmeticTest.test_max2
+ArithmeticTest.test_wdiv_rounding
+ArithmeticTest.test_wmul_increasing
+ArithmeticTest.test_wmul_rounding
 AssertTest.test_assert_true
 AssertTest.test_assert_false
 AssertTest.testFail_assert_false
@@ -36,13 +43,6 @@ EnvTest.testEnvString
 EnvTest.testEnvStringArray
 EnvTest.testEnvUInt
 EnvTest.testEnvUIntArray
-Examples.test_decreasing_div
-Examples.test_max1
-Examples.test_max1_broken
-Examples.test_max2
-Examples.test_wdiv_rounding
-Examples.test_wmul_increasing
-Examples.test_wmul_rounding
 ExpectRevertTest.testFail_expectRevert_bytes4
 ExpectRevertTest.test_expectRevert_bytes4
 FfiTest.testffi
