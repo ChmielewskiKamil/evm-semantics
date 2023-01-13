@@ -433,7 +433,7 @@ def _init_term(
         'MEMORYUSED_CELL': intToken(0),
         'WORDSTACK_CELL': KApply('.WordStack_EVM-TYPES_WordStack'),
         'PC_CELL': intToken(0),
-        'GAS_CELL': KEVM.inf_gas(KVariable('VGAS')),
+        'GAS_CELL': intToken(1234567890),
         'K_CELL': KSequence([KEVM.sharp_execute(), KVariable('CONTINUATION')]),
         'ACCOUNTS_CELL': KEVM.accounts(
             [
