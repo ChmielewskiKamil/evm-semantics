@@ -4,7 +4,7 @@ from pathlib import Path
 from subprocess import CalledProcessError
 from typing import Final, Iterable, List, Optional
 
-from pyk.cli_utils import run_process
+from pyk.cli_utils import BugReport, run_process
 from pyk.cterm import CTerm, remove_useless_constraints
 from pyk.kast.inner import KApply, KInner, KLabel, KSequence, KSort, KToken, KVariable, build_assoc, build_cons
 from pyk.kast.manip import (
@@ -43,6 +43,7 @@ class KEVM(KProve, KRun):
         kprove_command: str = 'kprove',
         krun_command: str = 'krun',
         extra_unparsing_modules: Iterable[KFlatModule] = (),
+        bug_report: Optional[BugReport] = None,
     ) -> None:
         # I'm going for the simplest version here, we can change later if there is an advantage.
         # https://stackoverflow.com/questions/9575409/calling-parent-class-init-with-multiple-inheritance-whats-the-right-way
@@ -55,6 +56,7 @@ class KEVM(KProve, KRun):
             profile=profile,
             command=kprove_command,
             extra_unparsing_modules=extra_unparsing_modules,
+            bug_report=bug_report,
         )
         KRun.__init__(
             self,
@@ -63,6 +65,7 @@ class KEVM(KProve, KRun):
             profile=profile,
             command=krun_command,
             extra_unparsing_modules=extra_unparsing_modules,
+            bug_report=bug_report,
         )
 
     @staticmethod
@@ -486,6 +489,7 @@ class Foundry(KEVM):
         use_directory: Optional[Path] = None,
         profile: bool = False,
         extra_unparsing_modules: Iterable[KFlatModule] = (),
+        bug_report: Optional[BugReport] = None,
     ) -> None:
         # copied from KEVM class and adapted to inherit KPrint instead
         KEVM.__init__(
@@ -495,6 +499,7 @@ class Foundry(KEVM):
             use_directory=use_directory,
             profile=profile,
             extra_unparsing_modules=extra_unparsing_modules,
+            bug_report=bug_report,
         )
 
     class Sorts:
