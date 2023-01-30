@@ -23,7 +23,7 @@ Claims should always use `#bufStrict` in LHS and `#buf` in RHS.
 
 ```k
     syntax ByteArray ::= #bufStrict ( Int , Int ) [function]
-    syntax ByteArray ::= #buf ( Int , Int ) [function, total, smtlib(buf)]
+    syntax ByteArray ::= #buf ( Int , Int ) [function, smtlib(buf)]
 
     syntax Int ::= #ceil32 ( Int ) [macro]
  // --------------------------------------
@@ -44,7 +44,11 @@ module BUF
     rule SIZE <Int #powByteLen(SIZE) => true requires 0 <=Int SIZE [simplification]
 
     rule #bufStrict(SIZE, DATA) => #buf(SIZE, DATA)
-      requires #range(0 <= DATA < (2 ^Int (SIZE *Int 8)))
+
+    rule #Ceil(#buf(SIZE, DATA)) => { true #Equals #range(0 <= DATA < (2 ^Int (SIZE *Int 8))) } [simplification]
+
+//    rule #bufStrict(SIZE, DATA) => #buf(SIZE, DATA)
+//      requires #range(0 <= DATA < (2 ^Int (SIZE *Int 8)))
 
     rule #buf(SIZE, DATA) => #padToWidth(SIZE, #asByteStack(DATA %Int (2 ^Int (SIZE *Int 8))))
       [concrete]
@@ -54,7 +58,7 @@ endmodule
 module BUF-KORE [kore, symbolic]
     imports BUF-SYNTAX
 
-    rule #bufStrict(_, _) => #Bottom              [owise]
+//    rule #bufStrict(_, _) => #Bottom              [owise]
 
 endmodule
 ```
