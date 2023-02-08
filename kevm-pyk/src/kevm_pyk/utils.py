@@ -5,7 +5,14 @@ from typing import Any, Callable, Collection, ContextManager, Final, Iterable, L
 
 from pyk.cterm import CTerm
 from pyk.kast.inner import KApply, KInner, KRewrite, KVariable, Subst
-from pyk.kast.manip import abstract_term_safely, bottom_up, is_anon_var, split_config_and_constraints, split_config_from
+from pyk.kast.manip import (
+    abstract_term_safely,
+    bottom_up,
+    get_cell,
+    is_anon_var,
+    split_config_and_constraints,
+    split_config_from,
+)
 from pyk.kast.outer import KDefinition, KFlatModule, KImport
 from pyk.kcfg import KCFG
 from pyk.kore.rpc import KoreClient, KoreServer, StopReason
@@ -145,6 +152,9 @@ def rpc_prove(
                 )
                 duration = time.perf_counter() - start
                 _LOGGER.warning(f'KProve execution stopping at depth {depth}, time {duration}')
+                prev_k = get_cell(curr_node.cterm.config, 'K_CELL')
+                next_k = get_cell(cterm.config, 'K_CELL')
+                _LOGGER.warning(f'KProve rewritten from {kprove.pretty_print(KRewrite(prev_k, next_k))}')
 
             # Can only occur when cut-point rules are configured.
             if len(next_cterms) == 1:
