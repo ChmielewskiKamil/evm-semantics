@@ -71,7 +71,7 @@ def rpc_prove(
         kprove.definition_dir,
         kprove.main_module,
         10000 + rpc_port,
-        command=["hs-backend-booster", "-l", "Rewrite", "--llvm-backend-library", "out/llvm/interpreter"],
+        command=["hs-backend-booster", "-l", "error", "--llvm-backend-library", "out/llvm/interpreter"],
     ) as booster:
 
         _LOGGER.warning("here we go!")
